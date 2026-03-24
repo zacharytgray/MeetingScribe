@@ -1,6 +1,6 @@
 # MeetingScribe
 
-**Open-source, privacy-first meeting transcription and summarization.** MeetingScribe records your system audio during any meeting (Teams, Zoom, Google Meet, etc.), transcribes it locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper), identifies speakers, and produces a structured markdown summary using an AI model of your choice. No audio ever leaves your machine — only the final transcript is sent for summarization, and only if you configure an API key.
+**Open-source, privacy-first meeting transcription and summarization.** MeetingScribe records your system audio during any meeting (Teams, Zoom, Google Meet, etc.), transcribes it locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper), identifies speakers, and produces a structured markdown summary using an AI model of your choice. No audio ever leaves your machine — transcription is fully local. Only the text transcript is sent to your chosen summarization API, and only if you configure one.
 
 ---
 
@@ -322,7 +322,7 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 
 ## Privacy & Security
 
-- **Audio never leaves your machine** — Whisper runs entirely locally
+- **Audio never leaves your machine** — Whisper runs entirely locally; only the text transcript is sent to the summarization API (if configured)
 - **Only the text transcript** is sent to the summarization API (if configured)
 - **API keys** are stored in `~/.meetingscribe/config.json` with `chmod 600` permissions
 - **No telemetry** — MeetingScribe makes no network calls except to the summarization API you explicitly configure

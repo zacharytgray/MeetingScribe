@@ -5,7 +5,7 @@
 MeetingScribe is a Python CLI + system tray app that:
 1. Captures system audio from any meeting (Teams, Zoom, etc.) via a virtual loopback device
 2. Optionally captures the user's microphone as a separate parallel stream, attributed by name
-3. Transcribes locally using `faster-whisper` (free, runs on CPU, no audio leaves the machine)
+3. Transcribes locally using `faster-whisper` (free, runs on CPU; no audio leaves the machine)
 4. Identifies speakers using `pyannote.audio` diarization (free, requires HuggingFace token)
 5. Removes acoustic echoes (mic picking up speaker output) via word-overlap deduplication
 6. Summarizes the meeting using the Claude API or any OpenRouter model (including free ones)
