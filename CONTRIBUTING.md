@@ -89,6 +89,9 @@ python3.12 -m venv .venv && source .venv/bin/activate
 pip install torch        # macOS: no --index-url flag
 pip install -e .
 python cli.py setup
+
+# Claude Code users: symlink AGENTS.md so Claude picks it up automatically
+ln -s AGENTS.md CLAUDE.md
 ```
 
 ---
