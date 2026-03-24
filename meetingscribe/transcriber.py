@@ -138,6 +138,8 @@ class Transcriber:
                     "pyannote/speaker-diarization-3.1",
                     use_auth_token=self.hf_token,
                 )
+                import torch
+                self._diarizer.to(torch.device("cpu"))
 
                 # Set up embedding inference for cross-chunk speaker tracking
                 if hasattr(self._diarizer, "embedding"):

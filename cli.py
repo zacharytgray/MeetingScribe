@@ -6,6 +6,10 @@ import os
 # Must be set before torch/ctranslate2 load their OpenMP runtimes.
 # On macOS both PyTorch and ctranslate2 bundle libiomp5.dylib which conflicts.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+# Prevent PyTorch from using MPS (Metal) on macOS — pyannote can segfault
+# during model load when MPS initializes alongside ctranslate2.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 import argparse
 import sys
