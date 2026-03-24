@@ -111,6 +111,10 @@ class Transcriber:
 
     def load_models(self) -> None:
         """Blocking: load Whisper (and optionally pyannote) into memory."""
+        import os
+        if self.hf_token:
+            os.environ.setdefault("HF_TOKEN", self.hf_token)
+
         from faster_whisper import WhisperModel
         self._whisper = WhisperModel(self.whisper_model_name, device="cpu", compute_type="int8")
 
@@ -133,6 +137,16 @@ class Transcriber:
                         return _orig_download(*args, **kwargs)
                     _compat_download._auth_compat_patched = True
                     huggingface_hub.hf_hub_download = _compat_download
+
+                # torchaudio >= 2.1 removed AudioMetaData from the top-level
+                # namespace; pyannote.audio still references it there.
+                import torchaudio as _ta
+                if not hasattr(_ta, "AudioMetaData"):
+                    try:
+                        from torchaudio.backend.common import AudioMetaData as _AMD
+                        _ta.AudioMetaData = _AMD
+                    except ImportError:
+                        pass
 
                 from pyannote.audio import Pipeline, Inference
 
