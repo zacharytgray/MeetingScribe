@@ -115,10 +115,23 @@ class Transcriber:
         if self.use_diarization and self.hf_token:
             try:
                 from pyannote.audio import Pipeline, Inference
-                from huggingface_hub import login
-                login(token=self.hf_token, add_to_git_credential=False)
+                import huggingface_hub
+
+                # pyannote.audio <3.3 calls hf_hub_download(use_auth_token=...)
+                # internally, but huggingface_hub >=0.23 removed that kwarg.
+                # Patch hf_hub_download to forward use_auth_token → token.
+                if not getattr(huggingface_hub.hf_hub_download, "_auth_compat_patched", False):
+                    _orig_download = huggingface_hub.hf_hub_download
+                    def _compat_download(*args, use_auth_token=None, **kwargs):
+                        if use_auth_token is not None:
+                            kwargs.setdefault("token", use_auth_token)
+                        return _orig_download(*args, **kwargs)
+                    _compat_download._auth_compat_patched = True
+                    huggingface_hub.hf_hub_download = _compat_download
+
                 self._diarizer = Pipeline.from_pretrained(
                     "pyannote/speaker-diarization-3.1",
+                    token=self.hf_token,
                 )
 
                 # Set up embedding inference for cross-chunk speaker tracking
