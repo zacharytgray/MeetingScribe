@@ -1,0 +1,57 @@
+# Claude Code local files (settings, worktrees — not committed)
+.claude/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets and config — NEVER commit these
+.env
+.env.*
+config.json
+secrets.json
+*.pem
+*.key
+
+# Temp audio files (created in /tmp at runtime, but just in case)
+*.wav
+meetingscribe_*/
+
+# Artifact from mis-configured output_dir (path string with surrounding quotes
+# was used as a literal directory name). Gitignore to prevent accidental commit.
+'*/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
