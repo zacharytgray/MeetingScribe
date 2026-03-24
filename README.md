@@ -1,21 +1,25 @@
 # MeetingScribe
 
+![MeetingScribe](assets/header.png)
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**Open-source, privacy-first meeting transcription and summarization.** MeetingScribe records your system audio during any meeting (Teams, Zoom, Google Meet, etc.), transcribes it locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper), identifies speakers, and produces a structured markdown summary using an AI model of your choice. No audio ever leaves your machine — transcription is fully local. Only the text transcript is sent to your chosen summarization API, and only if you configure one.
+**Open-source, privacy-first meeting transcription and summarization.** MeetingScribe records your system audio during any meeting (Teams, Zoom, Google Meet, etc.), transcribes it locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper), identifies speakers, and produces a structured markdown summary using an AI model of your choice. No audio ever leaves your machine — transcription is fully local. Only the text transcript is sent to your chosen summarization API, and only if you configure one. With [Ollama](https://ollama.ai), even summarization stays fully on-device — free and completely private.
 
 ---
 
 ## Features
 
 - **100% local transcription** — Whisper runs on your CPU; no audio sent to any server
+- **Fully local summarization** — use [Ollama](https://ollama.ai) to keep everything on-device; no API key or internet required
 - **Speaker diarization** — identifies who said what (optional, requires free HuggingFace account)
 - **Mic attribution** — captures your microphone as a separate stream, labeled with your name; acoustic echo deduplication removes mic segments that are just your speakers bleeding into the mic
 - **AI summarization** — structured markdown notes with action items, key points, and participants
-- **Your choice of AI provider** — Anthropic Claude or any OpenRouter model, including free ones
+- **Five summarization providers** — Ollama (local), Anthropic, OpenAI, Gemini, or OpenRouter (free models available); configurable priority order
+- **Driver-free audio on macOS 14.2+** — uses CoreAudio Taps via [audiotee](https://github.com/makeusabrew/audiotee); no BlackHole, no Audio MIDI Setup, volume control works normally
 - **Works with any meeting app** — captures system audio; no integrations or plugins needed
 - **macOS and Linux** support
 - **System tray app** for menu-bar control, or use the CLI directly
@@ -26,7 +30,8 @@
 
 ```
 System audio (meeting output)
-    ↓  BlackHole (macOS) / PulseAudio monitor (Linux)
+    ↓  audiotee / CoreAudio Tap (macOS 14.2+ — no driver needed)
+    ↓    OR BlackHole (macOS ≤13) / PulseAudio monitor (Linux)
 AudioRecorder (loopback)  —  captures 30s WAV chunks
     ↓
 Transcriber  —  faster-whisper (local, CPU)
@@ -45,7 +50,7 @@ Echo filter  —  removes mic segments that are acoustic
     ↓
 Merge & sort both streams by timestamp
     ↓
-Summarizer  —  sends transcript to Claude or OpenRouter
+Summarizer  —  Ollama (local) / Claude / OpenAI / Gemini / OpenRouter
     ↓
 ~/MeetingNotes/2025-06-12_q3_planning.md
 ```
@@ -56,7 +61,8 @@ Summarizer  —  sends transcript to Claude or OpenRouter
 
 - Python 3.10–3.12
 - macOS 12+ or Linux (Ubuntu 20.04+, Fedora, Arch)
-- **macOS**: [BlackHole](https://existential.audio/blackhole/) virtual audio driver + [Background Music](https://github.com/kyleneideck/BackgroundMusic) (for volume control)
+- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — no virtual driver, no Audio MIDI Setup, volume works normally ✨
+- **macOS ≤13**: [BlackHole](https://existential.audio/blackhole/) virtual audio driver (see setup steps below)
 - **Linux**: PulseAudio or PipeWire with monitor sources
 
 ---
@@ -66,31 +72,38 @@ Summarizer  —  sends transcript to Claude or OpenRouter
 ### macOS (Quick Start)
 
 ```bash
-# 1. Install audio dependencies
-brew install blackhole-2ch
-brew install --cask background-music
-
-# 2. Clone the repo
+# 1. Clone the repo
 git clone https://github.com/zacharytgray/MeetingScribe
 cd MeetingScribe
 
-# 3. Create a Python 3.12 venv and install
+# 2. Create a Python 3.12 venv and install
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install torch          # macOS: PyTorch installs directly from PyPI
 pip install -e .
 
-# 4. Configure
+# 3. Configure
 python cli.py setup
 ```
 
-**One-time audio routing setup (macOS):**
+**macOS 14.2+ (Sonoma) — driver-free setup:**
+
+Install [audiotee](https://github.com/makeusabrew/audiotee/releases) — download the binary, place it in your PATH, and MeetingScribe auto-detects it. No BlackHole, no Audio MIDI Setup changes, volume works normally. On first recording, macOS will prompt for System Audio Recording permission.
+
+```bash
+# Quick install (downloads latest release binary)
+bash scripts/install_mac.sh
+```
+
+**macOS 13 and earlier — BlackHole setup:**
+
+```bash
+brew install blackhole-2ch
+```
 1. Open **Audio MIDI Setup** (Applications → Utilities)
 2. Click **+** → **Create Multi-Output Device**
-3. Check both **BlackHole 2ch** and your speakers (e.g. "Audioengine 2+")
-4. Set **Primary Device** to your speakers
-5. Set this Multi-Output Device as your system output in System Settings → Sound
-6. Launch **Background Music** — it restores volume control while the Multi-Output Device is active
+3. Check both **BlackHole 2ch** and your speakers
+4. Set this Multi-Output Device as your system output in System Settings → Sound
 
 ### Linux (Quick Start)
 
@@ -135,7 +148,8 @@ You'll be prompted for:
 | OpenRouter model | Which model to use (see free options below) |
 | HuggingFace token | For speaker diarization (free account) |
 | Whisper model | Transcription quality/speed tradeoff |
-| Audio device | The BlackHole / loopback device index |
+| Audio backend | `auto` (audiotee on macOS 14.2+), `sounddevice` (BlackHole), or `audiotee` |
+| Audio device | Loopback device index (sounddevice backend only) |
 | Microphone device | Your mic, for attributing your own voice (optional) |
 | Your name | How your voice appears in the transcript |
 | Meeting size preset | Sets diarization thresholds for your typical group size |

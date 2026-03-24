@@ -153,6 +153,7 @@ class Config:
     chunk_seconds: int = 30
     diarization_threshold: float = 0.55
     speaker_tracker_threshold: float = 0.65
+    audio_backend: str = "auto"  # "auto" | "sounddevice" | "audiotee"
 ```
 
 Environment variable fallbacks: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `HF_TOKEN`.

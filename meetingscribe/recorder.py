@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import subprocess
 import tempfile
 import threading
 import time
@@ -163,3 +164,138 @@ class AudioRecorder:
         self._chunk_index += 1
         sf.write(str(path), audio, SAMPLE_RATE)
         self.chunk_queue.put((path, duration))
+
+
+# ---------------------------------------------------------------------------
+# AudioTee backend (macOS 14.2+ — no virtual driver required)
+# ---------------------------------------------------------------------------
+
+class AudioTeeRecorder:
+    """
+    Captures system audio by spawning the `audiotee` subprocess (macOS 14.2+).
+    audiotee uses CoreAudio Taps to record all system output without a virtual
+    driver. Audio still plays through the user's speakers/headphones normally.
+
+    Implements the same public interface as AudioRecorder so it can be used
+    as a drop-in replacement for the loopback stream.
+
+    Requires the `audiotee` binary in PATH. See: github.com/makeusabrew/audiotee
+    """
+
+    def __init__(self, chunk_seconds: int = CHUNK_SECONDS) -> None:
+        self.chunk_seconds = chunk_seconds
+        self.chunk_queue: queue.Queue[tuple[Optional[Path], float]] = queue.Queue()
+        self._tmpdir = Path(tempfile.mkdtemp(prefix="meetingscribe_"))
+        self._chunk_index = 0
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._process: Optional[subprocess.Popen] = None
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            return
+        self._started = True
+        self._stop_event.clear()
+        # --sample-rate 16000: outputs 16-bit signed int mono at 16kHz (Whisper native)
+        self._process = subprocess.Popen(
+            ["audiotee", "--sample-rate", "16000"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        self._thread = threading.Thread(
+            target=self._read_loop, daemon=True, name="audiotee-reader"
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        if not self._started:
+            return
+        self._stop_event.set()
+        if self._process:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+        if self._thread:
+            self._thread.join(timeout=10)
+        self._started = False
+
+    def cleanup(self) -> None:
+        import shutil
+        try:
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+        except Exception:
+            pass
+
+    def _read_loop(self) -> None:
+        """Read raw PCM from audiotee stdout, buffer into chunks, save WAV files."""
+        assert self._process is not None and self._process.stdout is not None
+        # audiotee --sample-rate 16000: 16-bit signed int, mono, little-endian
+        # Default chunk duration from audiotee is 200ms.
+        # 16000 samples/s × 0.2s × 1 channel × 2 bytes/sample = 6400 bytes per read.
+        BYTES_PER_READ = int(SAMPLE_RATE * 0.2 * 2)
+        samples_per_chunk = SAMPLE_RATE * self.chunk_seconds
+
+        buffer: list[np.ndarray] = []
+        buffer_samples = 0
+
+        while not self._stop_event.is_set():
+            raw = self._process.stdout.read(BYTES_PER_READ)
+            if not raw:
+                break  # process exited
+            audio = np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0
+            buffer.append(audio)
+            buffer_samples += len(audio)
+
+            if buffer_samples >= samples_per_chunk:
+                self._flush_buffer(buffer, final=False)
+                buffer = []
+                buffer_samples = 0
+
+        # Flush any remaining audio
+        if buffer:
+            self._flush_buffer(buffer, final=True)
+
+    def _flush_buffer(self, buffer: list[np.ndarray], final: bool) -> None:
+        if not buffer:
+            return
+        audio = np.concatenate(buffer)
+        duration = len(audio) / SAMPLE_RATE
+
+        if np.abs(audio).mean() < SILENCE_THRESHOLD and not final:
+            self.chunk_queue.put((None, duration))
+            return
+
+        path = self._tmpdir / f"chunk_{self._chunk_index:04d}.wav"
+        self._chunk_index += 1
+        sf.write(str(path), audio, SAMPLE_RATE)
+        self.chunk_queue.put((path, duration))
+
+
+# ---------------------------------------------------------------------------
+# Backend detection helpers
+# ---------------------------------------------------------------------------
+
+def audiotee_available() -> bool:
+    """True if the audiotee binary is present in PATH."""
+    import shutil
+    return shutil.which("audiotee") is not None
+
+
+def macos_version() -> tuple[int, int]:
+    """
+    Returns the (major, minor) macOS version, e.g. (14, 4).
+    Returns (0, 0) on non-macOS platforms.
+    """
+    import platform
+    import sys
+    if sys.platform != "darwin":
+        return (0, 0)
+    ver = platform.mac_ver()[0]  # e.g. "14.4.1"
+    parts = ver.split(".")
+    try:
+        return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+    except (ValueError, IndexError):
+        return (0, 0)

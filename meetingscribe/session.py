@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .config import Config
-from .recorder import AudioRecorder
+from .recorder import (
+    AudioRecorder, AudioTeeRecorder,
+    audiotee_available, macos_version,
+)
 from .transcriber import Transcriber, TranscriptSegment, _fmt_time
 from .summarizer import save_raw_transcript, save_summary, summarize
 
@@ -29,7 +32,7 @@ class MeetingSession:
         self._on_segment = on_segment
         self._on_status = on_status
 
-        self._recorder: Optional[AudioRecorder] = None
+        self._recorder: Optional[AudioRecorder | AudioTeeRecorder] = None
         self._mic_recorder: Optional[AudioRecorder] = None
         self._start_time: Optional[datetime.datetime] = None
         self._end_time: Optional[datetime.datetime] = None
@@ -82,16 +85,16 @@ class MeetingSession:
 
         self._start_time = datetime.datetime.now()
 
-        # Loopback stream
-        self._recorder = AudioRecorder(
-            device_index=self._config.audio_device_index,
-            chunk_seconds=self._config.chunk_seconds,
-        )
+        # Loopback stream — pick backend based on config.audio_backend
+        self._recorder = _make_loopback_recorder(self._config)
         self._transcriber.chunk_queue = self._recorder.chunk_queue
         self._transcriber.start()
         self._recorder.start()
 
-        # Mic stream (optional)
+        backend_label = "audiotee" if isinstance(self._recorder, AudioTeeRecorder) else "sounddevice"
+        self._emit_status(f"Recording started (backend: {backend_label}).")
+
+        # Mic stream (optional) — always uses sounddevice
         if self._mic_transcriber is not None:
             self._mic_recorder = AudioRecorder(
                 device_index=self._config.mic_device_index,
@@ -100,8 +103,6 @@ class MeetingSession:
             self._mic_transcriber.chunk_queue = self._mic_recorder.chunk_queue
             self._mic_transcriber.start()
             self._mic_recorder.start()
-
-        self._emit_status("Recording started.")
 
     def stop(self) -> Optional[Path]:
         """
@@ -223,6 +224,32 @@ class MeetingSession:
     def _emit_status(self, msg: str) -> None:
         if self._on_status:
             self._on_status(msg)
+
+
+def _make_loopback_recorder(config: Config) -> "AudioRecorder | AudioTeeRecorder":
+    """
+    Return the appropriate loopback recorder based on config.audio_backend.
+
+    "auto"        → AudioTeeRecorder on macOS 14.2+ with audiotee in PATH,
+                    AudioRecorder otherwise
+    "audiotee"    → AudioTeeRecorder (raises RuntimeError if audiotee missing)
+    "sounddevice" → AudioRecorder always
+    """
+    backend = config.audio_backend
+    if backend == "audiotee":
+        if not audiotee_available():
+            raise RuntimeError(
+                "audio_backend is set to 'audiotee' but the audiotee binary was not found in PATH. "
+                "Install it from https://github.com/makeusabrew/audiotee/releases or change "
+                "audio_backend to 'auto' or 'sounddevice'."
+            )
+        return AudioTeeRecorder(chunk_seconds=config.chunk_seconds)
+    if backend == "auto" and macos_version() >= (14, 2) and audiotee_available():
+        return AudioTeeRecorder(chunk_seconds=config.chunk_seconds)
+    return AudioRecorder(
+        device_index=config.audio_device_index,
+        chunk_seconds=config.chunk_seconds,
+    )
 
 
 def _word_overlap(a: str, b: str) -> float:

@@ -47,6 +47,11 @@ class Config:
     chunk_seconds: int = 30
     diarization_threshold: float = 0.55  # pyannote clustering threshold (lower = merge more)
     speaker_tracker_threshold: float = 0.65  # cross-chunk cosine similarity (lower = merge more)
+    # Audio capture backend (macOS only for audiotee)
+    # "auto"        — use audiotee on macOS 14.2+ if available, sounddevice otherwise
+    # "sounddevice" — always use sounddevice (requires BlackHole or other loopback device)
+    # "audiotee"    — always use audiotee (raises if binary not in PATH)
+    audio_backend: str = "auto"
 
     @property
     def effective_api_key(self) -> str:

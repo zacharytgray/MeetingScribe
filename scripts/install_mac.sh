@@ -20,20 +20,55 @@ if ! command -v brew &>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Install BlackHole (virtual loopback audio driver)
+# 2. Audio capture — audiotee (macOS 14.2+) or BlackHole (fallback)
 # ---------------------------------------------------------------------------
-if ! brew list blackhole-2ch &>/dev/null; then
-  echo "[+] Installing BlackHole 2ch virtual audio driver…"
-  brew install blackhole-2ch
-else
-  echo "[✓] BlackHole 2ch already installed."
+MACOS_MAJOR=$(sw_vers -productVersion | cut -d. -f1)
+
+if [ "$MACOS_MAJOR" -ge 14 ]; then
+  # macOS 14 Sonoma+ — use audiotee (CoreAudio Taps, no virtual driver needed)
+  AUDIOTEE_BIN="$BIN_DIR/audiotee"
+  if [ -x "$AUDIOTEE_BIN" ] || command -v audiotee &>/dev/null; then
+    echo "[✓] audiotee already installed."
+  else
+    echo "[+] Installing audiotee (driver-free system audio capture for macOS 14.2+)…"
+    # Fetch the latest release tag from GitHub
+    AUDIOTEE_TAG=$(curl -fsSL https://api.github.com/repos/makeusabrew/audiotee/releases/latest \
+      | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+    if [ -z "$AUDIOTEE_TAG" ]; then
+      echo "[!] Could not fetch audiotee release tag. Falling back to BlackHole."
+      MACOS_MAJOR=0  # force BlackHole path below
+    else
+      mkdir -p "$BIN_DIR"
+      curl -fsSL \
+        "https://github.com/makeusabrew/audiotee/releases/download/$AUDIOTEE_TAG/audiotee" \
+        -o "$AUDIOTEE_BIN"
+      chmod +x "$AUDIOTEE_BIN"
+      # Remove macOS Gatekeeper quarantine attribute added to downloaded binaries
+      xattr -d com.apple.quarantine "$AUDIOTEE_BIN" 2>/dev/null || true
+      echo "[✓] audiotee $AUDIOTEE_TAG installed to $AUDIOTEE_BIN"
+      echo
+      echo "[i] audiotee captures all system audio without BlackHole or any manual setup."
+      echo "    Volume control works normally. No Audio MIDI Setup changes needed."
+      echo "    On first recording, macOS will ask permission for System Audio Recording."
+      echo
+    fi
+  fi
 fi
 
-echo
-echo "[i] After installation, open 'Audio MIDI Setup' (Applications → Utilities),"
-echo "    create a 'Multi-Output Device' that includes both your speakers and BlackHole 2ch,"
-echo "    then set that Multi-Output Device as your system output."
-echo
+if [ "$MACOS_MAJOR" -lt 14 ]; then
+  # macOS 13 and earlier — use BlackHole virtual audio driver
+  if ! brew list blackhole-2ch &>/dev/null; then
+    echo "[+] Installing BlackHole 2ch virtual audio driver (macOS < 14 fallback)…"
+    brew install blackhole-2ch
+  else
+    echo "[✓] BlackHole 2ch already installed."
+  fi
+  echo
+  echo "[i] Open 'Audio MIDI Setup' (Applications → Utilities),"
+  echo "    create a 'Multi-Output Device' with your speakers + BlackHole 2ch,"
+  echo "    then set that device as your system output before recording."
+  echo
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Create Python venv

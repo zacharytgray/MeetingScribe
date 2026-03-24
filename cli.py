@@ -215,13 +215,47 @@ def cmd_setup(_args: argparse.Namespace) -> None:
     elif val in ("n", "no"):
         cfg.use_diarization = False
 
-    # Audio device
+    # Audio capture backend (macOS-only)
+    import sys, platform as _platform
+    _is_mac = sys.platform == "darwin"
+    if _is_mac:
+        from meetingscribe.recorder import audiotee_available, macos_version
+        _mac_ver = macos_version()
+        _audiotee_ok = audiotee_available()
+        print(c(BOLD, "\n--- Audio Capture Backend ---"))
+        if _mac_ver >= (14, 2):
+            if _audiotee_ok:
+                print(c(GREEN, "  audiotee detected — driver-free capture is available (recommended)."))
+            else:
+                print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} supports driver-free capture via audiotee,")
+                print(f"  but audiotee is not installed. Install it from:")
+                print(f"  https://github.com/makeusabrew/audiotee/releases")
+        else:
+            print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} — audiotee requires macOS 14.2+. Using BlackHole.")
+        print()
+        print("  auto        — use audiotee on macOS 14.2+ if available, BlackHole otherwise (default)")
+        print("  sounddevice — always use BlackHole (for older macOS or troubleshooting)")
+        print("  audiotee    — always use audiotee (error if not installed)")
+        valid_backends = ["auto", "sounddevice", "audiotee"]
+        while True:
+            val = input(f"  Audio backend [{cfg.audio_backend}]: ").strip().lower()
+            if not val:
+                break
+            if val in valid_backends:
+                cfg.audio_backend = val
+                break
+            print(c(YELLOW, f"  Choose one of: {', '.join(valid_backends)}"))
+
+    # Audio device (only relevant for sounddevice backend)
+    _show_device_prompt = not _is_mac or cfg.audio_backend in ("sounddevice",) or (cfg.audio_backend == "auto" and not (_is_mac and audiotee_available() if _is_mac else False))
     print("\nAvailable input devices:")
     devices = list_devices()
     loopback_idx = find_loopback_device()
     for dev in devices:
         marker = " ← recommended (loopback)" if dev["index"] == loopback_idx else ""
         print(f"  {dev['index']}: {dev['name']}{marker}")
+    if _is_mac and cfg.audio_backend == "auto" and audiotee_available() and macos_version() >= (14, 2):
+        print(c(CYAN, "  (audiotee backend active — audio device index only used as fallback)"))
     auto_str = f"auto (detected: {loopback_idx})" if loopback_idx is not None else "auto (none detected)"
     val = input(f"Audio device index [{cfg.audio_device_index if cfg.audio_device_index is not None else auto_str}]: ").strip()
     if val.isdigit():
