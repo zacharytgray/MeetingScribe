@@ -225,7 +225,7 @@ class Transcriber:
                 try:
                     self._process_item(item)
                 except Exception as e:
-                    pass
+                    print(f"[transcriber] error during final drain: {e}")
                 finally:
                     self.chunk_queue.task_done()
             except queue.Empty:

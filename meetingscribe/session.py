@@ -179,14 +179,19 @@ class MeetingSession:
 
     def _merge_transcripts(self) -> str:
         """Merge loopback and mic segments, sorted by start time."""
-        loopback_segs = self._transcriber.get_segments()
+        raw_loopback = self._transcriber.get_segments()
         mic_segs = self._mic_transcriber.get_segments() if self._mic_transcriber is not None else []
 
-        # When mic is active, any unlabeled loopback segment is "Remote"
+        # When mic is active, any unlabeled loopback segment is "Remote".
+        # Build new TranscriptSegment objects rather than mutating the originals,
+        # which are still referenced by the transcriber's internal list.
         if self._mic_transcriber is not None:
-            for seg in loopback_segs:
-                if seg.speaker is None:
-                    seg.speaker = "Remote"
+            loopback_segs = [
+                TranscriptSegment(s.start, s.end, s.text, "Remote") if s.speaker is None else s
+                for s in raw_loopback
+            ]
+        else:
+            loopback_segs = raw_loopback
 
         segments = loopback_segs + mic_segs
 

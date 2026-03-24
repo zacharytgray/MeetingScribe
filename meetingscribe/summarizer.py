@@ -58,7 +58,7 @@ def summarize(
     Returns (slug, markdown_content). Raises on failure.
     """
     date_str = (meeting_date or datetime.datetime.now()).strftime("%B %-d, %Y at %-I:%M %p")
-    duration_str = _fmt_duration(duration_seconds) if duration_seconds else "unknown"
+    duration_str = _fmt_duration(duration_seconds) if duration_seconds is not None else "unknown"
 
     context_lines = [f"Meeting date: {date_str}", f"Duration: {duration_str}"]
     if user_name:

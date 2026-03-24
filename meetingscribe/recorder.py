@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 import sounddevice as sd
@@ -55,11 +55,9 @@ class AudioRecorder:
         self,
         device_index: Optional[int] = None,
         chunk_seconds: int = CHUNK_SECONDS,
-        on_chunk: Optional[Callable[[Path], None]] = None,
     ) -> None:
         self.device_index = device_index
         self.chunk_seconds = chunk_seconds
-        self.on_chunk = on_chunk  # optional extra callback beyond queue
 
         # Queue items are (path, duration_seconds).
         # path=None means a silent chunk: the transcriber should advance its clock
@@ -165,5 +163,3 @@ class AudioRecorder:
         self._chunk_index += 1
         sf.write(str(path), audio, SAMPLE_RATE)
         self.chunk_queue.put((path, duration))
-        if self.on_chunk:
-            self.on_chunk(path)
