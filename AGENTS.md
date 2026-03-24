@@ -1,4 +1,4 @@
-# MeetingScribe — Claude Code Project Context
+# MeetingScribe — Agent & Codebase Context
 
 ## What This Project Is
 
@@ -19,7 +19,7 @@ Target platforms: **macOS and Linux**. Python 3.10–3.12.
 
 ```
 meetingscribe/
-├── CLAUDE.md                        ← this file
+├── AGENTS.md                        ← this file (AI agent context / codebase overview)
 ├── README.md                        ← end-user docs
 ├── cli.py                           ← CLI entry point (run directly or via `meetingscribe` command)
 ├── tray.py                          ← System tray / menu bar app (pystray)

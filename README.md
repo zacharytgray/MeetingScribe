@@ -374,6 +374,21 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 
 ---
 
+## AI Agent Context
+
+[`AGENTS.md`](AGENTS.md) contains a detailed description of the codebase — architecture, data flow, design decisions, configuration, and known issues. It is intended for:
+
+- **AI coding assistants** working on this repo (OpenAI Codex, Cursor, and others that read `AGENTS.md` natively)
+- **Claude Code** users: symlink it so Claude picks it up automatically:
+  ```bash
+  ln -s AGENTS.md CLAUDE.md
+  ```
+- **New contributors** who want a fast, structured overview of how everything fits together before diving into the code
+
+If you're opening a PR and using an AI assistant, pointing it at `AGENTS.md` first will give it the context it needs to work effectively.
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on opening issues, submitting pull requests, and the project's coding conventions.
