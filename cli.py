@@ -138,6 +138,57 @@ def cmd_setup(_args: argparse.Namespace) -> None:
         if val:
             cfg.user_name = val
 
+    # Chunk duration
+    print(c(BOLD, "\n--- Transcription Chunk Duration ---"))
+    print("Longer chunks give diarization more audio context (better accuracy)")
+    print("but delay when the first transcript line appears.")
+    print("  30s — low latency, good for most uses (default)")
+    print("  60s — better speaker separation, 60s before first line")
+    print("  90s — best quality, 90s before first line")
+    while True:
+        val = input(f"Chunk duration in seconds [{cfg.chunk_seconds}]: ").strip()
+        if not val:
+            break
+        if val.isdigit() and int(val) > 0:
+            cfg.chunk_seconds = int(val)
+            break
+        print(c(YELLOW, "  Enter a positive integer (e.g. 30, 60, 90)."))
+
+    # Diarization thresholds
+    if cfg.use_diarization:
+        print(c(BOLD, "\n--- Diarization Sensitivity ---"))
+        print("These thresholds control how aggressively speakers are merged.")
+        print("Lower values merge more → fewer false splits, but may blend distinct voices.")
+        print()
+        print(f"  {'Preset':<20} {'Speakers':<12} {'cluster':<10} {'tracker':<10} {'chunk'}")
+        print(f"  {'-'*20} {'-'*12} {'-'*10} {'-'*10} {'-'*6}")
+        print(f"  {'1-on-1':<20} {'2':<12} {'0.45':<10} {'0.60':<10} {'60s'}")
+        print(f"  {'Small team':<20} {'3–4':<12} {'0.55':<10} {'0.65':<10} {'30s  ← default'}")
+        print(f"  {'Medium meeting':<20} {'5–7':<12} {'0.65':<10} {'0.70':<10} {'30s'}")
+        print(f"  {'Large meeting':<20} {'8+':<12} {'0.72':<10} {'0.75':<10} {'30s'}")
+        print()
+        print("  cluster = pyannote within-chunk merging threshold")
+        print("  tracker = cross-chunk speaker identity threshold")
+        print()
+        presets = {
+            "1": (0.45, 0.60, 60,  "1-on-1"),
+            "2": (0.55, 0.65, 30,  "Small team (default)"),
+            "3": (0.65, 0.70, 30,  "Medium meeting"),
+            "4": (0.72, 0.75, 30,  "Large meeting"),
+        }
+        print("  Enter 1–4 to apply a preset, or press Enter to keep current values.")
+        val = input(f"  Preset [current: cluster={cfg.diarization_threshold}, tracker={cfg.speaker_tracker_threshold}]: ").strip()
+        if val in presets:
+            dt, st, cs, label = presets[val]
+            cfg.diarization_threshold = dt
+            cfg.speaker_tracker_threshold = st
+            cfg.chunk_seconds = cs
+            print(c(GREEN, f"  Applied preset: {label}"))
+        elif val == "":
+            pass
+        else:
+            print(c(YELLOW, "  Unrecognised preset, keeping current values."))
+
     save_config(cfg)
     print(c(GREEN, f"\nConfig saved to {CONFIG_FILE}\n"))
 

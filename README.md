@@ -295,6 +295,27 @@ Speaker labels persist across 30-second chunks using embedding-based matching, s
 
 ---
 
+## Diarization Tuning
+
+Speaker diarization involves two thresholds that trade off between **fewer false splits** (same speaker labeled as two) and **fewer false merges** (two speakers labeled as one). Longer chunks also improve accuracy by giving pyannote more audio context per window.
+
+| Meeting size | Speakers | `diarization_threshold` | `speaker_tracker_threshold` | `chunk_seconds` |
+|---|---|---|---|---|
+| 1-on-1 | 2 | 0.45 | 0.60 | 60 |
+| Small team | 3–4 | **0.55** | **0.65** | **30** ← default |
+| Medium meeting | 5–7 | 0.65 | 0.70 | 30 |
+| Large meeting | 8+ | 0.72 | 0.75 | 30 |
+
+**`diarization_threshold`** — controls pyannote's within-chunk clustering. Lower values merge acoustic embeddings more aggressively, reducing false splits at the risk of blending distinct voices.
+
+**`speaker_tracker_threshold`** — cosine similarity required for the same speaker to be recognised across 30-second chunk boundaries. Lower values track the same voice more loosely across chunks.
+
+**`chunk_seconds`** — audio window per transcription pass. Longer windows give pyannote more context and generally improve accuracy, but delay when the first transcript line appears (a 60s chunk produces no output for 60 seconds).
+
+Set these via `python cli.py setup` (shows an interactive preset table) or via the **Settings → Meeting size** and **Settings → Chunk** menus in the tray app.
+
+---
+
 ## Microphone Attribution & Echo Handling
 
 When a microphone device is configured, MeetingScribe runs two audio streams in parallel:

@@ -44,6 +44,8 @@ class MeetingSession:
             chunk_queue=None,  # wired in start()
             on_segment=self._on_segment,
             language="en",
+            diarization_threshold=config.diarization_threshold,
+            speaker_tracker_threshold=config.speaker_tracker_threshold,
         )
 
         # Mic transcriber — only created when mic_device_index is set

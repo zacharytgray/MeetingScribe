@@ -20,11 +20,10 @@ class CrossChunkSpeakerTracker:
     Maintains consistent global speaker identities across 30-second audio chunks
     by comparing per-speaker embeddings via cosine similarity.
     """
-    SIMILARITY_THRESHOLD = 0.65  # cosine similarity; higher = stricter matching
-
-    def __init__(self) -> None:
+    def __init__(self, similarity_threshold: float = 0.65) -> None:
         self._registry: list[tuple[str, "np.ndarray"]] = []  # [(global_label, normed_embedding)]
         self._counter = 0
+        self.similarity_threshold = similarity_threshold
 
     def resolve(self, chunk_embeddings: dict[str, "np.ndarray"]) -> dict[str, str]:
         """
@@ -49,7 +48,7 @@ class CrossChunkSpeakerTracker:
                     best_sim = sim
                     best_label = global_label
 
-            if best_label is not None and best_sim >= self.SIMILARITY_THRESHOLD:
+            if best_label is not None and best_sim >= self.similarity_threshold:
                 # Same speaker — update running average
                 for i, (lbl, known_emb) in enumerate(self._registry):
                     if lbl == best_label:
@@ -82,6 +81,8 @@ class Transcriber:
         on_segment: Optional[Callable[[TranscriptSegment], None]] = None,
         language: str = "en",
         default_speaker: Optional[str] = None,
+        diarization_threshold: float = 0.55,
+        speaker_tracker_threshold: float = 0.65,
     ) -> None:
         self.whisper_model_name = whisper_model
         self.use_diarization = use_diarization
@@ -96,7 +97,8 @@ class Transcriber:
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
         self._elapsed_offset: float = 0.0
-        self._speaker_tracker = CrossChunkSpeakerTracker()
+        self.diarization_threshold = diarization_threshold
+        self._speaker_tracker = CrossChunkSpeakerTracker(similarity_threshold=speaker_tracker_threshold)
 
         # Loaded lazily / explicitly via load_models()
         self._whisper = None
@@ -149,7 +151,7 @@ class Transcriber:
                 try:
                     self._diarizer.instantiate({
                         "segmentation": {"min_duration_off": 0.0},
-                        "clustering": {"threshold": 0.55},
+                        "clustering": {"threshold": self.diarization_threshold},
                     })
                 except Exception:
                     pass

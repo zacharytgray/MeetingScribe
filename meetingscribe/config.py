@@ -27,6 +27,8 @@ class Config:
     mic_device_index: Optional[int] = None    # None = disabled
     user_name: str = "Me"                     # Speaker label for mic audio
     chunk_seconds: int = 30
+    diarization_threshold: float = 0.55  # pyannote clustering threshold (lower = merge more)
+    speaker_tracker_threshold: float = 0.65  # cross-chunk cosine similarity (lower = merge more)
 
     @property
     def effective_api_key(self) -> str:
