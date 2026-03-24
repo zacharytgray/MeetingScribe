@@ -371,6 +371,10 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 - `large-v3` model requires ~6 GB of RAM and is slow on CPU
 - Diarization accuracy decreases with more than 4 simultaneous speakers
 - Linux tray app may require `gnome-shell-extension-appindicator` on GNOME desktops
+- **In-person meetings not yet supported** — the current design assumes a loopback device for remote audio. Fully in-person meetings (everyone in the same room) would need mic-side diarization to split multiple voices from a single microphone
+- **Hybrid meetings not yet supported** — a mix of in-room and remote participants would require simultaneous diarization on both the loopback and mic streams with coordinated speaker labels
+- **Windows not supported** — WASAPI loopback could enable Windows support; no testing has been done
+- Installation requires manual Python environment setup; a `brew` formula or standalone app is planned
 
 ---
 

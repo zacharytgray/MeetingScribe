@@ -259,6 +259,14 @@ Model loading happens in a background thread on Start. Live transcript is writte
 
 8. **Cross-session speaker memory** — Speaker identity resets between sessions. A persistent embedding store would allow "Speaker 1" to mean the same person across multiple recordings.
 
+9. **In-person meeting support** — Currently the loopback stream captures remote audio and the mic stream captures the local user only. For fully in-person meetings (everyone in the same room), the loopback stream is irrelevant; instead the mic should be run through pyannote diarization to split multiple voices from a single microphone. This is the inverse of the current design: diarization on mic, no loopback.
+
+10. **Hybrid meeting support** — A mix of in-room participants and remote participants. This requires diarization on both streams simultaneously: pyannote on the loopback to distinguish remote speakers, and pyannote on the mic to distinguish in-room speakers. The merged transcript must reconcile speaker labels across both diarization runs without collisions. The `CrossChunkSpeakerTracker` embedding approach could extend to this, but the two streams would need a shared or coordinated tracker.
+
+11. **Packaged installer** — A `brew install` formula (macOS) or standalone `.app` / `.AppImage` (Linux) would dramatically lower the barrier to entry. The current `pip install -e .` flow works but requires Python environment setup that many users will struggle with.
+
+12. **Windows support** — Currently untested and unsupported. Windows audio loopback can be captured via WASAPI loopback mode (supported by sounddevice on Windows). The main gap is a Windows-compatible alternative to BlackHole and the Multi-Output Device setup.
+
 ---
 
 ## Environment Variables
