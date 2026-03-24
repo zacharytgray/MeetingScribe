@@ -88,12 +88,19 @@ python cli.py setup
 
 **macOS 14.2+ (Sonoma) — driver-free setup:**
 
-Install [audiotee](https://github.com/makeusabrew/audiotee/releases) — download the binary, place it in your PATH, and MeetingScribe auto-detects it. No BlackHole, no Audio MIDI Setup changes, volume works normally. On first recording, macOS will prompt for System Audio Recording permission.
+[audiotee](https://github.com/makeusabrew/audiotee) uses CoreAudio Taps to capture system audio. No BlackHole, no Audio MIDI Setup, volume works normally. Build it from source (requires Xcode Command Line Tools, installed by default on most Macs):
 
 ```bash
-# Quick install (downloads latest release binary)
+# Quick install via the installer script (handles everything)
 bash scripts/install_mac.sh
+
+# Or build manually
+git clone https://github.com/makeusabrew/audiotee
+cd audiotee && swift build -c release
+cp .build/release/audiotee /usr/local/bin/
 ```
+
+On first recording, macOS prompts for System Audio Recording permission — grant it once.
 
 **macOS 13 and earlier — BlackHole setup:**
 

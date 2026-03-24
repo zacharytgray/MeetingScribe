@@ -240,8 +240,10 @@ def _make_loopback_recorder(config: Config) -> "AudioRecorder | AudioTeeRecorder
         if not audiotee_available():
             raise RuntimeError(
                 "audio_backend is set to 'audiotee' but the audiotee binary was not found in PATH. "
-                "Install it from https://github.com/makeusabrew/audiotee/releases or change "
-                "audio_backend to 'auto' or 'sounddevice'."
+                "Build it with: git clone https://github.com/makeusabrew/audiotee && "
+                "cd audiotee && swift build -c release && "
+                "cp .build/release/audiotee /usr/local/bin/  "
+                "Or change audio_backend to 'auto' or 'sounddevice' in config."
             )
         return AudioTeeRecorder(chunk_seconds=config.chunk_seconds)
     if backend == "auto" and macos_version() >= (14, 2) and audiotee_available():

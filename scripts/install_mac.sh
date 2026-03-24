@@ -26,32 +26,28 @@ MACOS_MAJOR=$(sw_vers -productVersion | cut -d. -f1)
 
 if [ "$MACOS_MAJOR" -ge 14 ]; then
   # macOS 14 Sonoma+ — use audiotee (CoreAudio Taps, no virtual driver needed)
-  AUDIOTEE_BIN="$BIN_DIR/audiotee"
-  if [ -x "$AUDIOTEE_BIN" ] || command -v audiotee &>/dev/null; then
+  AUDIOTEE_BIN="/usr/local/bin/audiotee"
+  if command -v audiotee &>/dev/null; then
     echo "[✓] audiotee already installed."
+  elif ! command -v swift &>/dev/null; then
+    echo "[!] Swift not found. Install Xcode Command Line Tools then re-run:"
+    echo "    xcode-select --install"
+    echo "    Then re-run this script to build audiotee."
+    MACOS_MAJOR=0  # fall through to BlackHole
   else
-    echo "[+] Installing audiotee (driver-free system audio capture for macOS 14.2+)…"
-    # Fetch the latest release tag from GitHub
-    AUDIOTEE_TAG=$(curl -fsSL https://api.github.com/repos/makeusabrew/audiotee/releases/latest \
-      | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-    if [ -z "$AUDIOTEE_TAG" ]; then
-      echo "[!] Could not fetch audiotee release tag. Falling back to BlackHole."
-      MACOS_MAJOR=0  # force BlackHole path below
-    else
-      mkdir -p "$BIN_DIR"
-      curl -fsSL \
-        "https://github.com/makeusabrew/audiotee/releases/download/$AUDIOTEE_TAG/audiotee" \
-        -o "$AUDIOTEE_BIN"
-      chmod +x "$AUDIOTEE_BIN"
-      # Remove macOS Gatekeeper quarantine attribute added to downloaded binaries
-      xattr -d com.apple.quarantine "$AUDIOTEE_BIN" 2>/dev/null || true
-      echo "[✓] audiotee $AUDIOTEE_TAG installed to $AUDIOTEE_BIN"
-      echo
-      echo "[i] audiotee captures all system audio without BlackHole or any manual setup."
-      echo "    Volume control works normally. No Audio MIDI Setup changes needed."
-      echo "    On first recording, macOS will ask permission for System Audio Recording."
-      echo
-    fi
+    echo "[+] Building audiotee from source (driver-free audio capture for macOS 14.2+)…"
+    AUDIOTEE_TMP=$(mktemp -d)
+    git clone --depth 1 https://github.com/makeusabrew/audiotee.git "$AUDIOTEE_TMP/audiotee" 2>&1 | tail -1
+    (cd "$AUDIOTEE_TMP/audiotee" && swift build -c release -Xswiftc -suppress-warnings 2>&1 | grep -E "error:|Build complete")
+    cp "$AUDIOTEE_TMP/audiotee/.build/release/audiotee" "$AUDIOTEE_BIN"
+    chmod +x "$AUDIOTEE_BIN"
+    rm -rf "$AUDIOTEE_TMP"
+    echo "[✓] audiotee built and installed to $AUDIOTEE_BIN"
+    echo
+    echo "[i] audiotee captures all system audio without BlackHole or any manual setup."
+    echo "    Volume control works normally. No Audio MIDI Setup changes needed."
+    echo "    On first recording, macOS will ask permission for System Audio Recording."
+    echo
   fi
 fi
 
