@@ -133,6 +133,17 @@ class TrayApp:
                         item("90s — best quality",          self._make_chunk_setter(90)),
                     ),
                 ),
+                item(
+                    lambda _: f"Summary via: {self._primary_provider_label()}",
+                    lambda _: pystray.Menu(
+                        *(
+                            item(name, self._make_provider_primary_setter(name))
+                            for name in self._config.active_providers
+                        )
+                    ) if self._config.active_providers else pystray.Menu(
+                        item("No providers configured", lambda *_: None),
+                    ),
+                ),
             )),
             pystray.Menu.SEPARATOR,
             item("Quit", self._on_quit),
@@ -251,6 +262,19 @@ class TrayApp:
     def _make_chunk_setter(self, seconds: int):
         def _set(icon, menu_item):
             self._config.chunk_seconds = seconds
+            save_config(self._config)
+        return _set
+
+    def _primary_provider_label(self) -> str:
+        active = self._config.active_providers
+        return active[0] if active else "none"
+
+    def _make_provider_primary_setter(self, name: str):
+        def _set(icon, menu_item):
+            order = list(self._config.provider_order)
+            if name in order:
+                order.remove(name)
+            self._config.provider_order = [name] + order
             save_config(self._config)
         return _set
 

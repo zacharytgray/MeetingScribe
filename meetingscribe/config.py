@@ -14,11 +14,16 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 OPENROUTER_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
+OLLAMA_DEFAULT_MODEL = "llama3.2"
+
+# Canonical provider names used throughout the codebase
+KNOWN_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "ollama"]
 
 
 @dataclass
 class Config:
     output_dir: str = "~/MeetingNotes"
+    # --- Summarization providers ---
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_model: str = OPENROUTER_DEFAULT_MODEL
@@ -26,6 +31,13 @@ class Config:
     openai_model: str = OPENAI_DEFAULT_MODEL
     gemini_api_key: str = ""
     gemini_model: str = GEMINI_DEFAULT_MODEL
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = ""  # empty = disabled; set to a model name (e.g. "llama3.2") to enable
+    # Priority order for summarization; first active provider wins
+    provider_order: list = field(
+        default_factory=lambda: list(KNOWN_PROVIDERS)
+    )
+    # --- Transcription / audio ---
     hf_token: str = ""
     whisper_model: str = "base"  # tiny | base | small | medium | large-v3
     use_diarization: bool = True
@@ -51,6 +63,18 @@ class Config:
     @property
     def effective_gemini_key(self) -> str:
         return self.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+
+    @property
+    def active_providers(self) -> list[str]:
+        """Return providers from provider_order that are configured and ready to use."""
+        has_key: dict[str, bool] = {
+            "anthropic":  bool(self.effective_api_key),
+            "openai":     bool(self.effective_openai_key),
+            "gemini":     bool(self.effective_gemini_key),
+            "openrouter": bool(self.effective_openrouter_key),
+            "ollama":     bool(self.ollama_model),
+        }
+        return [p for p in self.provider_order if has_key.get(p, False)]
 
     @property
     def effective_hf_token(self) -> str:

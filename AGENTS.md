@@ -99,12 +99,18 @@ The mic stream always gets `default_speaker=config.user_name`. Diarization is in
 ### Acoustic echo deduplication
 When speakers (not headphones) are used, the mic picks up audio playing through them, creating near-duplicate transcript entries. `_remove_echo_segments()` in `session.py` compares every user-labeled mic segment against every loopback segment. If temporal proximity (overlap or within 2.5s) **and** word overlap ≥ 0.70 — the mic segment is an acoustic echo and is dropped. Headphones eliminate the problem entirely; this is a software fallback.
 
-### Summarization — dual provider
-`summarizer.py` supports:
-- **Anthropic Claude** (`_call_anthropic`) — uses `anthropic` SDK, `claude-sonnet-4-20250514`
-- **OpenRouter** (`_call_openrouter`) — uses `httpx` against OpenAI-compatible endpoint; default model `meta-llama/llama-3.3-70b-instruct:free`
+### Summarization — multi-provider with configurable order
+`summarizer.py` supports five providers iterated in `config.provider_order`; the first active one wins:
 
-If `openrouter_api_key` is set, OpenRouter is used. Otherwise falls back to `anthropic_api_key`. If neither is set, raw transcript is saved.
+- **Anthropic Claude** (`_call_anthropic`) — `anthropic` SDK, `claude-sonnet-4-20250514`
+- **OpenAI** (`_call_openai_compat`) — `httpx` to `api.openai.com/v1`; default `gpt-4o-mini`
+- **Google Gemini** (`_call_openai_compat`) — `httpx` to Gemini's OpenAI-compatible endpoint; default `gemini-2.0-flash`
+- **OpenRouter** (`_call_openai_compat`) — `httpx`; default `meta-llama/llama-3.3-70b-instruct:free`
+- **Ollama** (`_call_openai_compat`) — `httpx` to `{ollama_host}/v1`; no auth header; requires `ollama_model` to be non-empty
+
+OpenAI, Gemini, OpenRouter, and Ollama all share `_call_openai_compat(base_url, api_key, model, content)`. If `api_key` is empty (Ollama), the Authorization header is omitted.
+
+`config.active_providers` returns the filtered, ordered list of providers that have credentials. `session.py` uses `active_providers[0]` for the status message. If no providers are active, the raw transcript is saved.
 
 When `user_name` is provided to `summarize()`, the system prompt instructs the LLM to: write from the user's perspective, assign action items to them by name, and **not** include them in the Participants list.
 
@@ -124,9 +130,20 @@ Config stored at `~/.meetingscribe/config.json` (chmod 600 to protect API keys).
 @dataclass
 class Config:
     output_dir: str = "~/MeetingNotes"
+    # Summarization providers
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = ""           # empty = disabled; e.g. "llama3.2" to enable
+    provider_order: list = field(    # first active provider in this list is used
+        default_factory=lambda: ["anthropic", "openai", "gemini", "openrouter", "ollama"]
+    )
+    # Transcription / audio
     hf_token: str = ""
     whisper_model: str = "base"       # tiny | base | small | medium | large-v3
     use_diarization: bool = True
@@ -134,9 +151,13 @@ class Config:
     mic_device_index: Optional[int] = None     # None = disabled
     user_name: str = "Me"                      # speaker label for mic audio
     chunk_seconds: int = 30
+    diarization_threshold: float = 0.55
+    speaker_tracker_threshold: float = 0.65
 ```
 
-Environment variable fallbacks: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `HF_TOKEN`.
+Environment variable fallbacks: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `HF_TOKEN`.
+
+`active_providers` property returns the subset of `provider_order` that have a configured key (or for Ollama, a non-empty `ollama_model`).
 
 `resolved_output_dir` strips surrounding quotes from the path string (handles setup wizard input quoting edge case) then calls `.expanduser()`.
 

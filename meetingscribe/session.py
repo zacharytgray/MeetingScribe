@@ -135,18 +135,8 @@ class MeetingSession:
 
         duration = (self._end_time - self._start_time).total_seconds()
         output_dir = self._config.resolved_output_dir
-        api_key = self._config.effective_api_key
-        or_key = self._config.effective_openrouter_key
-        openai_key = self._config.effective_openai_key
-        gemini_key = self._config.effective_gemini_key
-
-        _provider_name = (
-            "OpenRouter" if or_key else
-            "Claude" if api_key else
-            "OpenAI" if openai_key else
-            "Gemini" if gemini_key else
-            None
-        )
+        active = self._config.active_providers
+        _provider_name = active[0].capitalize() if active else None
 
         saved_path: Optional[Path] = None
         if _provider_name:
@@ -154,24 +144,27 @@ class MeetingSession:
                 self._emit_status(f"Summarizing with {_provider_name}…")
                 slug, markdown = summarize(
                     transcript=transcript,
-                    api_key=api_key,
+                    api_key=self._config.effective_api_key,
                     meeting_date=self._start_time,
                     duration_seconds=duration,
-                    openrouter_api_key=or_key,
+                    openrouter_api_key=self._config.effective_openrouter_key,
                     openrouter_model=self._config.openrouter_model,
-                    openai_api_key=openai_key,
+                    openai_api_key=self._config.effective_openai_key,
                     openai_model=self._config.openai_model,
-                    gemini_api_key=gemini_key,
+                    gemini_api_key=self._config.effective_gemini_key,
                     gemini_model=self._config.gemini_model,
+                    ollama_host=self._config.ollama_host,
+                    ollama_model=self._config.ollama_model,
+                    provider_order=self._config.provider_order,
                     user_name=self._config.user_name if self._config.mic_device_index is not None else "",
                 )
                 saved_path = save_summary(slug, markdown, output_dir, self._start_time, transcript=transcript)
                 self._emit_status(f"Saved: {saved_path}")
             except Exception as e:
-                self._emit_status(f"{_provider_name} API error ({e}); saving raw transcript.")
+                self._emit_status(f"{_provider_name} error ({e}); saving raw transcript.")
                 saved_path = save_raw_transcript(transcript, output_dir, self._start_time)
         else:
-            self._emit_status("No API key configured; saving raw transcript.")
+            self._emit_status("No summarization provider configured; saving raw transcript.")
             saved_path = save_raw_transcript(transcript, output_dir, self._start_time)
 
         self._recorder.cleanup()

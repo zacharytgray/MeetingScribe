@@ -155,42 +155,51 @@ export HF_TOKEN="hf_..."
 
 ## API Key Options
 
-MeetingScribe only needs an API key for **summarization** — transcription is always local. You can also skip summarization entirely and save the raw transcript.
+MeetingScribe only needs a provider for **summarization** — transcription is always fully local. Audio never leaves your machine; only the text transcript is sent to whichever provider you choose (or you can skip summarization entirely).
 
-If multiple keys are configured, the priority order is: **OpenRouter → Anthropic → OpenAI → Gemini**.
+During `python cli.py setup` you'll see a numbered menu to pick which provider(s) to configure — only the ones you select will prompt for credentials. If you configure multiple providers you'll set a priority order; the first active provider in that order is used each session. You can also change priority at any time from the tray **Settings → Summary via** submenu.
 
-### Option A: Anthropic Claude (Paid)
+### Option A: Ollama — fully local, no API key
+
+[Ollama](https://ollama.ai) runs open-source LLMs on your own hardware. Nothing leaves your machine — fully air-gapped summarization.
+
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Pull a model: `ollama pull llama3.2`
+3. Run `python cli.py setup` and select **Ollama**; enter the model name
+
+Popular models for summarization: `llama3.2`, `mistral`, `gemma3`, `phi4`.
+
+### Option B: Anthropic Claude (Paid)
 
 1. Sign up at [console.anthropic.com](https://console.anthropic.com)
 2. Add credits ($5 minimum) and create an API key
-3. Paste the key into `python cli.py setup`
+3. Run `python cli.py setup` and select **Anthropic**
 
-Uses `claude-sonnet-4-20250514` by default. Produces the highest quality summaries.
+Uses `claude-sonnet-4-20250514`. Produces the highest quality summaries.
 
-### Option B: OpenAI (Paid)
+### Option C: OpenAI (Paid)
 
 1. Sign up at [platform.openai.com](https://platform.openai.com)
 2. Create an API key and add credits
-3. Paste the key into `python cli.py setup`
+3. Run `python cli.py setup` and select **OpenAI**
 
-Uses `gpt-4o-mini` by default — fast and cost-effective for summarization. Change to `gpt-4o` for higher quality.
+Uses `gpt-4o-mini` by default — fast and cost-effective. Change to `gpt-4o` for higher quality.
 
-### Option C: Google Gemini (Paid, generous free tier)
+### Option D: Google Gemini (Paid, generous free tier)
 
-1. Get an API key at [aistudio.google.com](https://aistudio.google.com)
-2. Paste the key into `python cli.py setup`
+1. Get a free API key at [aistudio.google.com](https://aistudio.google.com)
+2. Run `python cli.py setup` and select **Google Gemini**
 
-Uses `gemini-2.0-flash` by default. Gemini API keys include a free tier that is sufficient for typical meeting usage.
+Uses `gemini-2.0-flash`. The free tier is sufficient for typical meeting usage.
 
-### Option D: OpenRouter (Free models available)
+### Option E: OpenRouter (Free models available)
 
-[OpenRouter](https://openrouter.ai) provides access to dozens of models through a single API, including several free-tier options that work well for meeting summarization.
+[OpenRouter](https://openrouter.ai) provides access to dozens of models through a single API, including free-tier options.
 
-1. Sign up at [openrouter.ai](https://openrouter.ai)
-2. Create a free API key
-3. Paste it into `python cli.py setup`
+1. Sign up at [openrouter.ai](https://openrouter.ai) and create a free API key
+2. Run `python cli.py setup` and select **OpenRouter**
 
-**Recommended free models** (set as OpenRouter model in config):
+**Recommended free models:**
 
 | Model | Speed | Quality | Notes |
 |---|---|---|---|
@@ -203,9 +212,9 @@ Uses `gemini-2.0-flash` by default. Gemini API keys include a free tier that is 
 
 Free models on OpenRouter have rate limits but are sufficient for typical meeting usage (one meeting = one API call).
 
-### Option E: No API key
+### Option F: No provider
 
-Skip summarization entirely — MeetingScribe will save the raw timestamped transcript as a markdown file.
+Skip summarization entirely — MeetingScribe saves the raw timestamped transcript as a markdown file.
 
 ---
 

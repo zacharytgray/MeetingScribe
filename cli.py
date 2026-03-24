@@ -68,41 +68,128 @@ def cmd_setup(_args: argparse.Namespace) -> None:
     if val:
         cfg.output_dir = val
 
-    # Anthropic API key
-    val = input(f"Anthropic API key [{_mask(cfg.anthropic_api_key)}]: ").strip()
-    if val:
-        cfg.anthropic_api_key = val
+    # -------------------------------------------------------------------------
+    # Summarization providers — pick which ones to configure
+    # -------------------------------------------------------------------------
+    from meetingscribe.config import KNOWN_PROVIDERS
+    print(c(BOLD, "\n--- Summarization Provider ---"))
+    print("MeetingScribe summarizes your transcript using an AI provider.")
+    print("Audio stays local; only the text transcript is sent to the chosen provider.\n")
+    _provider_menu = [
+        ("anthropic",  "Anthropic (Claude)   — paid, highest quality"),
+        ("openai",     "OpenAI (GPT)         — paid"),
+        ("gemini",     "Google Gemini        — paid, generous free tier"),
+        ("openrouter", "OpenRouter           — free models available"),
+        ("ollama",     "Ollama               — fully local, no API key"),
+        (None,         "None / skip"),
+    ]
+    _currently_configured = cfg.active_providers
+    if _currently_configured:
+        print(f"  Currently configured: {', '.join(_currently_configured)}")
+    for i, (_, label) in enumerate(_provider_menu, 1):
+        print(f"  {i}. {label}")
+    print()
+    while True:
+        raw = input("Select providers (comma-separated numbers, or Enter to keep current): ").strip()
+        if not raw:
+            _selected_providers = [p for p, _ in _provider_menu if p is not None and p in (cfg.active_providers or [])]
+            # If nothing was configured before either, just break and skip
+            break
+        parts = [p.strip() for p in raw.split(",")]
+        if all(p.isdigit() and 1 <= int(p) <= len(_provider_menu) for p in parts):
+            chosen_indices = [int(p) - 1 for p in parts]
+            _selected_providers = [_provider_menu[i][0] for i in chosen_indices if _provider_menu[i][0] is not None]
+            # Clear keys for providers that were deselected
+            if "anthropic" not in _selected_providers:
+                cfg.anthropic_api_key = ""
+            if "openrouter" not in _selected_providers:
+                cfg.openrouter_api_key = ""
+            if "openai" not in _selected_providers:
+                cfg.openai_api_key = ""
+            if "gemini" not in _selected_providers:
+                cfg.gemini_api_key = ""
+            if "ollama" not in _selected_providers:
+                cfg.ollama_model = ""
+            break
+        print(c(YELLOW, f"  Enter numbers 1–{len(_provider_menu)}, e.g. 1,4"))
 
-    # OpenRouter API key
-    print(f"\nOpenRouter gives access to many models through one API, including free ones.")
-    print(f"Get a key at openrouter.ai — leave blank to skip.")
-    val = input(f"OpenRouter API key [{_mask(cfg.openrouter_api_key)}]: ").strip()
-    if val:
-        cfg.openrouter_api_key = val
-    if cfg.openrouter_api_key:
-        val = input(f"OpenRouter model [{cfg.openrouter_model}]: ").strip()
+    # Prompt for credentials / model only for selected providers
+    if "anthropic" in _selected_providers:
+        print()
+        val = input(f"  Anthropic API key [{_mask(cfg.anthropic_api_key)}]: ").strip()
         if val:
-            cfg.openrouter_model = val
+            cfg.anthropic_api_key = val
 
-    # OpenAI API key
-    print(f"\nOpenAI — leave blank to skip.")
-    val = input(f"OpenAI API key [{_mask(cfg.openai_api_key)}]: ").strip()
-    if val:
-        cfg.openai_api_key = val
-    if cfg.openai_api_key:
-        val = input(f"OpenAI model [{cfg.openai_model}]: ").strip()
+    if "openai" in _selected_providers:
+        print()
+        val = input(f"  OpenAI API key [{_mask(cfg.openai_api_key)}]: ").strip()
+        if val:
+            cfg.openai_api_key = val
+        val = input(f"  OpenAI model [{cfg.openai_model}]: ").strip()
         if val:
             cfg.openai_model = val
 
-    # Gemini API key
-    print(f"\nGoogle Gemini — leave blank to skip.")
-    val = input(f"Gemini API key [{_mask(cfg.gemini_api_key)}]: ").strip()
-    if val:
-        cfg.gemini_api_key = val
-    if cfg.gemini_api_key:
-        val = input(f"Gemini model [{cfg.gemini_model}]: ").strip()
+    if "gemini" in _selected_providers:
+        print()
+        print(f"  Get a free Gemini key at aistudio.google.com")
+        val = input(f"  Gemini API key [{_mask(cfg.gemini_api_key)}]: ").strip()
+        if val:
+            cfg.gemini_api_key = val
+        val = input(f"  Gemini model [{cfg.gemini_model}]: ").strip()
         if val:
             cfg.gemini_model = val
+
+    if "openrouter" in _selected_providers:
+        print()
+        print(f"  Get a free OpenRouter key at openrouter.ai")
+        val = input(f"  OpenRouter API key [{_mask(cfg.openrouter_api_key)}]: ").strip()
+        if val:
+            cfg.openrouter_api_key = val
+        val = input(f"  OpenRouter model [{cfg.openrouter_model}]: ").strip()
+        if val:
+            cfg.openrouter_model = val
+
+    if "ollama" in _selected_providers:
+        print()
+        print(f"  Ollama runs models locally — get it at ollama.ai")
+        val = input(f"  Ollama host [{cfg.ollama_host}]: ").strip()
+        if val:
+            cfg.ollama_host = val
+        val = input(f"  Ollama model (e.g. llama3.2, mistral) [{cfg.ollama_model or 'llama3.2'}]: ").strip()
+        cfg.ollama_model = val or cfg.ollama_model or "llama3.2"
+
+    # Provider order (only relevant if ≥2 configured)
+    _active_now = [p for p in KNOWN_PROVIDERS if (
+        (p == "anthropic"  and cfg.anthropic_api_key) or
+        (p == "openai"     and cfg.openai_api_key) or
+        (p == "gemini"     and cfg.gemini_api_key) or
+        (p == "openrouter" and cfg.openrouter_api_key) or
+        (p == "ollama"     and cfg.ollama_model)
+    )]
+    if len(_active_now) >= 2:
+        _current_order = [p for p in cfg.provider_order if p in _active_now]
+        # Append any newly added providers not yet in order
+        for p in _active_now:
+            if p not in _current_order:
+                _current_order.append(p)
+        print()
+        print(c(BOLD, "--- Provider Priority ---"))
+        print(f"When multiple providers are configured, MeetingScribe uses the first in order.")
+        print(f"  Current order: {', '.join(_current_order)}")
+        raw = input("  New order (comma-separated names, or Enter to keep): ").strip()
+        if raw:
+            parts = [p.strip().lower() for p in raw.split(",")]
+            valid = [p for p in parts if p in KNOWN_PROVIDERS]
+            invalid = [p for p in parts if p not in KNOWN_PROVIDERS]
+            if invalid:
+                print(c(YELLOW, f"  Unknown providers ignored: {', '.join(invalid)}"))
+            if valid:
+                # Put valid entries first, then append any active providers not mentioned
+                new_order = valid + [p for p in _current_order if p not in valid]
+                cfg.provider_order = new_order
+                print(c(GREEN, f"  Provider order set: {', '.join(new_order)}"))
+        else:
+            cfg.provider_order = _current_order
 
     # HuggingFace token
     val = input(f"HuggingFace token (for speaker diarization) [{_mask(cfg.hf_token)}]: ").strip()

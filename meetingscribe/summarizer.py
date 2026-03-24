@@ -8,10 +8,11 @@ from typing import Optional
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 MAX_TOKENS = 2048
 
-# OpenAI-compatible endpoints for each provider
+# OpenAI-compatible base URLs for each provider
 _OPENROUTER_URL = "https://openrouter.ai/api/v1"
 _OPENAI_URL = "https://api.openai.com/v1"
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+# Ollama base URL is dynamic: f"{ollama_host}/v1"
 
 SYSTEM_PROMPT = """\
 You are MeetingScribe. Given a meeting transcript, output a structured markdown summary.
@@ -51,7 +52,7 @@ Rules:
 
 def summarize(
     transcript: str,
-    api_key: str,
+    api_key: str = "",
     meeting_date: Optional[datetime.datetime] = None,
     duration_seconds: Optional[float] = None,
     openrouter_api_key: str = "",
@@ -60,13 +61,24 @@ def summarize(
     openai_model: str = "",
     gemini_api_key: str = "",
     gemini_model: str = "",
+    ollama_host: str = "http://localhost:11434",
+    ollama_model: str = "",
+    provider_order: Optional[list[str]] = None,
     user_name: str = "",
 ) -> tuple[str, str]:
     """
-    Summarize via one of the supported providers.
-    Priority: OpenRouter → Anthropic → OpenAI → Gemini.
-    Returns (slug, markdown_content). Raises on failure.
+    Summarize via the first active provider in provider_order.
+    Provider priority defaults to: anthropic → openai → gemini → openrouter → ollama.
+    Returns (slug, markdown_content). Raises ValueError if no provider is active.
     """
+    from .config import (
+        KNOWN_PROVIDERS, OPENROUTER_DEFAULT_MODEL,
+        OPENAI_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL, OLLAMA_DEFAULT_MODEL,
+    )
+
+    if provider_order is None:
+        provider_order = list(KNOWN_PROVIDERS)
+
     date_str = (meeting_date or datetime.datetime.now()).strftime("%B %-d, %Y at %-I:%M %p")
     duration_str = _fmt_duration(duration_seconds) if duration_seconds is not None else "unknown"
 
@@ -82,20 +94,24 @@ def summarize(
     context_lines.append(f"\nTranscript:\n{transcript}")
     user_content = "\n".join(context_lines)
 
-    from .config import OPENROUTER_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL
+    # Map of provider name → (is_active, call_fn)
+    _dispatch: dict[str, tuple[bool, object]] = {
+        "anthropic":  (bool(api_key),          lambda: _call_anthropic(user_content, api_key)),
+        "openai":     (bool(openai_api_key),    lambda: _call_openai_compat(_OPENAI_URL,     openai_api_key,     openai_model or OPENAI_DEFAULT_MODEL,         user_content)),
+        "gemini":     (bool(gemini_api_key),    lambda: _call_openai_compat(_GEMINI_URL,     gemini_api_key,     gemini_model or GEMINI_DEFAULT_MODEL,         user_content)),
+        "openrouter": (bool(openrouter_api_key),lambda: _call_openai_compat(_OPENROUTER_URL, openrouter_api_key, openrouter_model or OPENROUTER_DEFAULT_MODEL, user_content)),
+        "ollama":     (bool(ollama_model),      lambda: _call_openai_compat(f"{ollama_host}/v1", "", ollama_model or OLLAMA_DEFAULT_MODEL, user_content)),
+    }
 
-    if openrouter_api_key:
-        raw = _call_openai_compat(_OPENROUTER_URL, openrouter_api_key, openrouter_model or OPENROUTER_DEFAULT_MODEL, user_content)
-    elif api_key:
-        raw = _call_anthropic(user_content, api_key)
-    elif openai_api_key:
-        raw = _call_openai_compat(_OPENAI_URL, openai_api_key, openai_model or OPENAI_DEFAULT_MODEL, user_content)
-    elif gemini_api_key:
-        raw = _call_openai_compat(_GEMINI_URL, gemini_api_key, gemini_model or GEMINI_DEFAULT_MODEL, user_content)
-    else:
-        raise ValueError("No API key provided.")
+    for name in provider_order:
+        active, call_fn = _dispatch.get(name, (False, None))
+        if active and call_fn is not None:
+            raw = call_fn()
+            return _parse_response(raw, meeting_date)
 
-    return _parse_response(raw, meeting_date)
+    raise ValueError(
+        "No summarization provider is configured. Run `python cli.py setup` to add a provider."
+    )
 
 
 def _call_anthropic(user_content: str, api_key: str) -> str:
@@ -111,14 +127,19 @@ def _call_anthropic(user_content: str, api_key: str) -> str:
 
 
 def _call_openai_compat(base_url: str, api_key: str, model: str, user_content: str) -> str:
-    """Call any OpenAI-compatible chat completions endpoint (OpenRouter, OpenAI, Gemini)."""
+    """
+    Call any OpenAI-compatible chat completions endpoint.
+    Works for OpenRouter, OpenAI, Gemini, and Ollama.
+    If api_key is empty (e.g. Ollama), the Authorization header is omitted entirely.
+    """
     import httpx
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     response = httpx.post(
         f"{base_url}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         json={
             "model": model,
             "max_tokens": MAX_TOKENS,
@@ -127,7 +148,7 @@ def _call_openai_compat(base_url: str, api_key: str, model: str, user_content: s
                 {"role": "user", "content": user_content},
             ],
         },
-        timeout=60.0,
+        timeout=120.0,
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
@@ -138,17 +159,14 @@ def _parse_response(raw: str, meeting_date: Optional[datetime.datetime]) -> tupl
     slug_match = re.match(r"^SLUG:\s*([a-z0-9_]+)", first_line.strip())
     if slug_match:
         markdown = rest.lstrip("\n")
-    else:
-        slug = (meeting_date or datetime.datetime.now()).strftime("meeting_%Y_%m_%d")
-        markdown = raw
-        return slug, _fix_list_formatting(markdown)
+        return slug_match.group(1)[:40], _fix_list_formatting(markdown)
 
-    return slug_match.group(1)[:40], _fix_list_formatting(markdown)
+    slug = (meeting_date or datetime.datetime.now()).strftime("meeting_%Y_%m_%d")
+    return slug, _fix_list_formatting(raw)
 
 
 def _fix_list_formatting(markdown: str) -> str:
     """Ensure each markdown list item starts on its own line."""
-    # Insert a newline before any list item that immediately follows non-whitespace text
     return re.sub(r"(?<!\n)([ \t]*- )", r"\n\1", markdown)
 
 
@@ -180,7 +198,7 @@ def save_summary(
 
     content = markdown
     if transcript.strip():
-        # Double-space between lines so each renders as its own line in markdown
+        # Double-space between lines so each renders as its own paragraph in markdown
         transcript_md = "\n\n".join(line for line in transcript.splitlines() if line.strip())
         content += f"\n\n---\n\n## 📝 Raw Transcript\n\n{transcript_md}\n"
 
