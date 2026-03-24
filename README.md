@@ -1,5 +1,10 @@
 # MeetingScribe
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform: macOS | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 **Open-source, privacy-first meeting transcription and summarization.** MeetingScribe records your system audio during any meeting (Teams, Zoom, Google Meet, etc.), transcribes it locally using [faster-whisper](https://github.com/SYSTRAN/faster-whisper), identifies speakers, and produces a structured markdown summary using an AI model of your choice. No audio ever leaves your machine — transcription is fully local. Only the text transcript is sent to your chosen summarization API, and only if you configure one.
 
 ---
@@ -66,8 +71,8 @@ brew install blackhole-2ch
 brew install --cask background-music
 
 # 2. Clone the repo
-git clone https://github.com/YOUR_USERNAME/meetingscribe
-cd meetingscribe
+git clone https://github.com/zacharytgray/MeetingScribe
+cd MeetingScribe
 
 # 3. Create a Python 3.12 venv and install
 python3.12 -m venv .venv
@@ -94,8 +99,8 @@ python cli.py setup
 sudo apt-get install portaudio19-dev libsndfile1 ffmpeg
 
 # Clone, create venv, and install
-git clone https://github.com/YOUR_USERNAME/meetingscribe
-cd meetingscribe
+git clone https://github.com/zacharytgray/MeetingScribe
+cd MeetingScribe
 python3 -m venv .venv && source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
@@ -133,6 +138,8 @@ You'll be prompted for:
 | Audio device | The BlackHole / loopback device index |
 | Microphone device | Your mic, for attributing your own voice (optional) |
 | Your name | How your voice appears in the transcript |
+| Meeting size preset | Sets diarization thresholds for your typical group size |
+| Chunk duration | Audio window per transcription pass (30 / 60 / 90 seconds) |
 
 Configuration is saved to `~/.meetingscribe/config.json` (chmod 600, never committed to git).
 
@@ -314,6 +321,8 @@ Speaker diarization involves two thresholds that trade off between **fewer false
 
 Set these via `python cli.py setup` (shows an interactive preset table) or via the **Settings → Meeting size** and **Settings → Chunk** menus in the tray app.
 
+> **Note:** Changes made in the tray menu take effect for the *next* recording session. The thresholds and chunk size are read when you click **Start Recording** — adjusting them mid-session has no effect on the current session.
+
 ---
 
 ## Microphone Attribution & Echo Handling
@@ -343,17 +352,17 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 
 ## Privacy & Security
 
-- **Audio never leaves your machine** — Whisper runs entirely locally; only the text transcript is sent to the summarization API (if configured)
-- **Only the text transcript** is sent to the summarization API (if configured)
+- **Audio never leaves your machine** — Whisper runs entirely locally on your CPU
+- **Only the text transcript** is sent to the summarization API you configure (if any)
 - **API keys** are stored in `~/.meetingscribe/config.json` with `chmod 600` permissions
 - **No telemetry** — MeetingScribe makes no network calls except to the summarization API you explicitly configure
-- This file (`~/.meetingscribe/config.json`) is outside the project directory and is never committed to git
+- `~/.meetingscribe/config.json` is outside the project directory and is never committed to git
 
 ---
 
 ## Known Limitations
 
-- Speaker identity resets if the same person joins a second session (no cross-session speaker memory)
+- Speaker identity resets between sessions (no cross-session speaker memory)
 - Transcription accuracy depends on audio quality through the loopback device
 - `large-v3` model requires ~6 GB of RAM and is slow on CPU
 - Diarization accuracy decreases with more than 4 simultaneous speakers
@@ -361,6 +370,12 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 
 ---
 
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on opening issues, submitting pull requests, and the project's coding conventions.
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.

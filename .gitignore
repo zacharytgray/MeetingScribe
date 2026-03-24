@@ -28,7 +28,6 @@ pip-delete-this-directory.txt
 .idea/
 *.swp
 *.swo
-*.swo
 
 # macOS
 .DS_Store
