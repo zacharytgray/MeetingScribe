@@ -245,6 +245,13 @@ def _open_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # Pre-initialize torch in the main thread before pystray starts NSApplication.
+    # On macOS, torch initializes multiprocessing semaphores and system frameworks
+    # during first use; doing this from a secondary thread after AppKit is running
+    # can cause a segfault.
+    import torch
+    torch.zeros(1)
+
     app = TrayApp()
     app.run()
 
