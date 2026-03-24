@@ -1,5 +1,7 @@
 # Claude Code local files (settings, worktrees — not committed)
 .claude/
+# Local Claude Code symlink (ln -s AGENTS.md CLAUDE.md)
+CLAUDE.md
 
 # Virtual environments
 .venv/
