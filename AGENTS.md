@@ -266,7 +266,7 @@ pystray>=0.19.4             # System tray app
 Pillow>=10.0.0              # Icon rendering for tray
 ```
 
-`httpx` is used by `_call_openrouter()` in `summarizer.py` but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
+`httpx` is used by `_call_openai_compat()` in `summarizer.py` (for OpenAI, Gemini, OpenRouter, and Ollama providers) but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
 
 ### System dependencies
 - **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `python cli.py setup` offers to build it automatically. No virtual driver required.

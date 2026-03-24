@@ -150,9 +150,7 @@ You'll be prompted for:
 | Setting | Description |
 |---|---|
 | Notes output directory | Where markdown files are saved (default: `~/MeetingNotes`) |
-| Anthropic API key | For Claude summarization (optional) |
-| OpenRouter API key | Free alternative for summarization (optional) |
-| OpenRouter model | Which model to use (see free options below) |
+| AI provider(s) | Pick from: Ollama, Anthropic, OpenAI, Gemini, OpenRouter (prompted for keys/models of selected providers only) |
 | HuggingFace token | For speaker diarization (free account) |
 | Whisper model | Transcription quality/speed tradeoff |
 | Audio backend | `auto` (audiotee on macOS 14.2+), `sounddevice` (BlackHole), or `audiotee` |
