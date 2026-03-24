@@ -192,30 +192,41 @@ class Transcriber:
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                path = self.chunk_queue.get(timeout=1.0)
+                item = self.chunk_queue.get(timeout=1.0)
             except queue.Empty:
                 continue
             try:
-                self._process_chunk(path)
+                self._process_item(item)
             except Exception as e:
-                print(f"[transcriber] error processing {path.name}: {e}")
+                path, _ = item
+                print(f"[transcriber] error processing {path}: {e}")
             finally:
                 self.chunk_queue.task_done()
 
         # Drain remaining items after stop signal
         while True:
             try:
-                path = self.chunk_queue.get_nowait()
+                item = self.chunk_queue.get_nowait()
                 try:
-                    self._process_chunk(path)
+                    self._process_item(item)
                 except Exception as e:
-                    print(f"[transcriber] error processing {path.name}: {e}")
+                    pass
                 finally:
                     self.chunk_queue.task_done()
             except queue.Empty:
                 break
 
-    def _process_chunk(self, path: Path) -> None:
+    def _process_item(self, item: tuple) -> None:
+        path, duration = item
+        if path is None:
+            # Silent chunk — advance clock to keep timestamps in sync with the
+            # other stream (mic or loopback). No Whisper needed.
+            with self._lock:
+                self._elapsed_offset += duration
+            return
+        self._process_chunk(path, duration)
+
+    def _process_chunk(self, path: Path, duration: float) -> None:
         if self._whisper is None:
             raise RuntimeError("Models not loaded. Call load_models() first.")
 
@@ -243,8 +254,7 @@ class Transcriber:
                 if self.on_segment:
                     self.on_segment(ts)
 
-            import soundfile as sf
-            self._elapsed_offset += sf.info(str(path)).duration
+            self._elapsed_offset += duration
 
     def _diarize(self, path: Path, whisper_segs: list) -> dict[tuple[float, float], str]:
         """Run pyannote diarization; return map of (start, end) → global speaker label."""

@@ -61,7 +61,11 @@ class AudioRecorder:
         self.chunk_seconds = chunk_seconds
         self.on_chunk = on_chunk  # optional extra callback beyond queue
 
-        self.chunk_queue: queue.Queue[Path] = queue.Queue()
+        # Queue items are (path, duration_seconds).
+        # path=None means a silent chunk: the transcriber should advance its clock
+        # by duration_seconds without running Whisper. This keeps both streams'
+        # timestamps in sync even when one stream has silent periods.
+        self.chunk_queue: queue.Queue[tuple[Optional[Path], float]] = queue.Queue()
         self._tmpdir = Path(tempfile.mkdtemp(prefix="meetingscribe_"))
         self._chunk_index = 0
         self._buffer: list[np.ndarray] = []
@@ -148,13 +152,18 @@ class AudioRecorder:
             audio = np.concatenate(self._buffer)
             self._buffer.clear()
 
-        # Discard silent chunks
+        duration = len(audio) / SAMPLE_RATE
+
+        # Silent chunks: don't write to disk or run Whisper, but still enqueue
+        # a clock-advance sentinel so the transcriber's elapsed offset stays in
+        # sync with wall time.
         if np.abs(audio).mean() < SILENCE_THRESHOLD and not final:
+            self.chunk_queue.put((None, duration))
             return
 
         path = self._tmpdir / f"chunk_{self._chunk_index:04d}.wav"
         self._chunk_index += 1
         sf.write(str(path), audio, SAMPLE_RATE)
-        self.chunk_queue.put(path)
+        self.chunk_queue.put((path, duration))
         if self.on_chunk:
             self.on_chunk(path)
