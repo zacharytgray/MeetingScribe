@@ -248,8 +248,8 @@ Files are saved as `~/MeetingNotes/YYYY-MM-DD_<slug>.md`:
 **Duration:** 47m
 
 ## ✅ Action Items
-- [ ] Finalize headcount proposal — @Sarah
-- [ ] Send revised budget to finance by Friday — @Zach
+- [ ] Follow up with finance on the revised budget
+- [ ] Send updated headcount proposal by Friday
 
 ## 📋 Summary
 Prose summary of the discussion...
@@ -259,7 +259,8 @@ Prose summary of the discussion...
 - Decision to defer two contractor renewals until Q4
 
 ## 👥 Participants
-- Speaker 1 (Sarah)
+- Me
+- Speaker 1
 - Speaker 2
 
 ---
@@ -269,9 +270,12 @@ Prose summary of the discussion...
 
 ## 📝 Raw Transcript
 
-[00:00–00:05] [Zach] Let's get started — can someone walk me through the numbers?
+[00:00–00:05] [Me] Let's get started — can someone walk me through the numbers?
 [00:05–00:18] [Speaker 1] Sure, so the total budget request is...
+[00:18–00:30] [Speaker 2] And if we defer the contractor renewals to Q4...
 ```
+
+Speaker labels in the raw transcript reflect what MeetingScribe can actually identify: your own voice is labeled with your configured name (e.g. `Me`), and remote participants are labeled `Speaker 1`, `Speaker 2`, etc. by pyannote's diarization. Individual speaker names are not resolved automatically — the AI summarizer may infer names from context if participants introduce themselves during the meeting.
 
 ---
 
