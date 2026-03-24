@@ -3,12 +3,12 @@
 ## What This Project Is
 
 MeetingScribe is a Python CLI + system tray app that:
-1. Captures system audio from any meeting (Teams, Zoom, etc.) via a virtual loopback device
+1. Captures system audio from any meeting (Teams, Zoom, etc.) via CoreAudio Taps (audiotee, macOS 14.2+) or a virtual loopback device (BlackHole on macOS ≤13, PulseAudio monitor on Linux)
 2. Optionally captures the user's microphone as a separate parallel stream, attributed by name
 3. Transcribes locally using `faster-whisper` (free, runs on CPU; no audio leaves the machine)
 4. Identifies speakers using `pyannote.audio` diarization (free, requires HuggingFace token)
 5. Removes acoustic echoes (mic picking up speaker output) via word-overlap deduplication
-6. Summarizes the meeting using the Claude API or any OpenRouter model (including free ones)
+6. Summarizes the meeting using a configurable AI provider: Ollama (fully local), Claude, OpenAI, Gemini, or OpenRouter (free models available); priority order is user-configurable
 7. Saves a structured markdown file with AI-generated filename and appended raw transcript
 
 Target platforms: **macOS and Linux**. Python 3.10–3.12.
@@ -20,20 +20,25 @@ Target platforms: **macOS and Linux**. Python 3.10–3.12.
 ```
 meetingscribe/
 ├── AGENTS.md                        ← this file (AI agent context / codebase overview)
+├── CLAUDE.md                        ← symlink → AGENTS.md (Claude Code compatibility)
 ├── README.md                        ← end-user docs
 ├── cli.py                           ← CLI entry point (run directly or via `meetingscribe` command)
 ├── tray.py                          ← System tray / menu bar app (pystray)
 ├── pyproject.toml                   ← package definition; console script entry points
+├── assets/
+│   └── header.png                   ← repository header image
 ├── meetingscribe/
 │   ├── __init__.py                  ← public API exports
 │   ├── cli_entry.py                 ← shim so installed `meetingscribe` / `meetingscribe-tray` commands work
 │   ├── config.py                    ← Config dataclass + load/save from ~/.meetingscribe/config.json
-│   ├── recorder.py                  ← AudioRecorder: sounddevice capture → 30s WAV chunks → queue
+│   ├── recorder.py                  ← AudioRecorder (sounddevice) + AudioTeeRecorder (audiotee subprocess);
+│   │                                   audiotee_available(), macos_version() helpers
 │   ├── transcriber.py               ← Transcriber: faster-whisper + pyannote diarization + CrossChunkSpeakerTracker
-│   ├── summarizer.py                ← summarize() via Claude or OpenRouter; save_summary()
-│   └── session.py                   ← MeetingSession: orchestrates dual streams + echo dedup + summarizer
+│   ├── summarizer.py                ← summarize() via 5 providers (Anthropic/OpenAI/Gemini/OpenRouter/Ollama); save_summary()
+│   └── session.py                   ← MeetingSession: orchestrates dual streams + echo dedup + summarizer;
+│                                       _make_loopback_recorder() factory
 └── scripts/
-    ├── install_mac.sh               ← macOS installer
+    ├── install_mac.sh               ← macOS installer (builds audiotee from source on macOS 14.2+)
     └── install_linux.sh             ← Linux installer
 ```
 
@@ -41,47 +46,91 @@ meetingscribe/
 
 ## Architecture & Data Flow
 
+### Loopback backend selection
+
+`_make_loopback_recorder(config)` in `session.py` picks the loopback recorder at session start:
+
 ```
-System audio (loopback)
-    ↓  BlackHole (macOS) / PulseAudio monitor (Linux)
-AudioRecorder [recorder.py]
-    - sounddevice InputStream at 16kHz mono
-    - Buffers audio; every 30s saves WAV chunk to temp dir
-    - Puts WAV paths into a queue.Queue
-    ↓
+config.audio_backend = "auto"  →  AudioTeeRecorder  if macOS 14.2+ AND audiotee in PATH
+                                   AudioRecorder     otherwise (BlackHole / PulseAudio)
+config.audio_backend = "audiotee"    →  AudioTeeRecorder  (RuntimeError if binary missing)
+config.audio_backend = "sounddevice" →  AudioRecorder     (always)
+```
+
+### Full data flow
+
+```
+─────────────────────── LOOPBACK STREAM ────────────────────────────────────
+
+macOS 14.2+ (audiotee backend):
+  System audio → [CoreAudio Tap, non-destructive]
+      → audiotee subprocess (stdout: raw 16-bit PCM, 16kHz mono)
+      → AudioTeeRecorder [recorder.py]
+            reads 6400-byte chunks (200ms), accumulates → 30s WAV → queue
+
+macOS ≤13 or sounddevice backend:
+  System audio → BlackHole virtual device (or PulseAudio monitor on Linux)
+      → AudioRecorder [recorder.py]
+            sounddevice InputStream at 16kHz mono → 30s WAV chunks → queue
+
+Both backends expose the same public interface: .start() .stop() .cleanup() .chunk_queue
+
+    ↓ chunk_queue (Path, duration) tuples
 Transcriber [transcriber.py] — diarization=True
-    - Runs faster-whisper (vad_filter=True, beam_size=5, language="en")
-    - Runs pyannote per chunk; maps Whisper segments → speaker by overlap
-    - CrossChunkSpeakerTracker resolves consistent labels via cosine similarity
+    - faster-whisper (vad_filter=True, beam_size=5, language="en")
+    - pyannote.audio per chunk; maps Whisper segments → speaker by overlap
+    - CrossChunkSpeakerTracker: cosine-similarity embedding match across chunks
     - Segments labeled "Speaker 1", "Speaker 2", …
 
-Microphone (optional, when mic_device_index is configured)
-    ↓
-AudioRecorder [recorder.py]
+─────────────────────── MIC STREAM (optional) ──────────────────────────────
+
+Microphone input (when mic_device_index is configured)
+    → AudioRecorder [recorder.py]
+          sounddevice InputStream at 16kHz mono → 30s WAV chunks → queue
     ↓
 Transcriber [transcriber.py] — diarization=False, default_speaker=user_name
     - Whisper only; all segments labeled with user's name (e.g. "Zach")
+    - Diarization intentionally skipped — mic captures only one person
+
+─────────────────────── SESSION ORCHESTRATION ──────────────────────────────
 
 MeetingSession [session.py]
     - load_models(): blocking load of Whisper + pyannote before session
-    - start(): creates both AudioRecorders, wires queues, starts both Transcribers
+    - start(): calls _make_loopback_recorder(), wires queues, starts both streams
+              emits status: "Recording started (backend: audiotee)" or "… sounddevice"
     - _merge_transcripts():
         1. Gets segments from both Transcribers
         2. Labels unlabeled loopback segments "Remote" (when mic is active)
         3. Runs _remove_echo_segments() — drops mic segments that echo loopback audio
         4. Sorts combined list by timestamp
     - stop(): stops both streams, drains queues, calls _merge_transcripts(), summarizes, saves
-    ↓
+
+─────────────────────── SUMMARIZATION ─────────────────────────────────────
+
 summarize() [summarizer.py]
-    - Calls Anthropic Claude API or OpenRouter (OpenAI-compatible endpoint via httpx)
+    - Iterates config.provider_order; uses first active provider:
+        anthropic  → _call_anthropic()       (anthropic SDK)
+        openai     → _call_openai_compat()   (httpx → api.openai.com/v1)
+        gemini     → _call_openai_compat()   (httpx → Gemini OpenAI-compat endpoint)
+        openrouter → _call_openai_compat()   (httpx → openrouter.ai/api/v1)
+        ollama     → _call_openai_compat()   (httpx → {ollama_host}/v1, no auth header)
     - System prompt enforces exact markdown structure + SLUG: prefix
     - Returns (slug, markdown) tuple
-    ↓
+
 save_summary() [summarizer.py]
     - Writes to output_dir/YYYY-MM-DD_<slug>.md
     - Appends raw transcript at bottom with double-newline spacing
     - Handles filename collisions with _2, _3 suffix
 ```
+
+### AudioTeeRecorder internals
+
+- Spawns `audiotee --sample-rate 16000` as a subprocess; stdout is raw PCM
+- PCM format: 16-bit signed integer, little-endian, mono, 16 kHz (`dtype="<i2"`)
+- Conversion: `np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0`
+- Background thread reads 6400-byte chunks (200 ms), accumulates into `chunk_seconds`-length buffers
+- Silent chunks (mean amplitude < `SILENCE_THRESHOLD`) are discarded before WAV write (same logic as `AudioRecorder`)
+- On first run, macOS shows a one-time System Audio Recording permission prompt (purple Control Center indicator). If denied, audio is silent — the silence detection path handles this gracefully with a warning printed after the first chunk.
 
 ---
 
@@ -220,7 +269,8 @@ Pillow>=10.0.0              # Icon rendering for tray
 `httpx` is used by `_call_openrouter()` in `summarizer.py` but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
 
 ### System dependencies
-- **macOS**: BlackHole virtual audio driver (`brew install blackhole-2ch`) + Background Music (`brew install --cask background-music`) + Multi-Output Device in Audio MIDI Setup
+- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `python cli.py setup` offers to build it automatically. No virtual driver required.
+- **macOS ≤13**: BlackHole virtual audio driver (`brew install blackhole-2ch`) + Multi-Output Device in Audio MIDI Setup. Background Music (`brew install --cask background-music`) does **not** fix volume control with BlackHole — this is a macOS architectural limitation. Use audiotee (upgrade to macOS 14+) to get working volume control.
 - **Linux**: PulseAudio or PipeWire monitor sources; `portaudio19-dev`, `libsndfile1`, `ffmpeg` via apt/dnf/pacman
 
 ### macOS note on PyTorch

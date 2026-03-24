@@ -227,9 +227,19 @@ def cmd_setup(_args: argparse.Namespace) -> None:
             if _audiotee_ok:
                 print(c(GREEN, "  audiotee detected — driver-free capture is available (recommended)."))
             else:
-                print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} supports driver-free capture via audiotee,")
-                print(f"  but audiotee is not installed. Install it from:")
-                print(f"  https://github.com/makeusabrew/audiotee/releases")
+                import shutil as _shutil
+                _swift_ok = _shutil.which("swift") is not None
+                print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} supports driver-free audio capture via audiotee")
+                print(f"  (no BlackHole, no Audio MIDI Setup, volume works normally).")
+                print()
+                if not _swift_ok:
+                    print(c(YELLOW, "  [!] Swift not found — needed to build audiotee."))
+                    print(c(YELLOW, "      Install Xcode Command Line Tools, then re-run setup:"))
+                    print(c(YELLOW, "          xcode-select --install"))
+                else:
+                    ans = input("  Build and install audiotee now? (~90s) [Y/n]: ").strip().lower()
+                    if ans in ("", "y", "yes"):
+                        _audiotee_ok = _build_audiotee()
         else:
             print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} — audiotee requires macOS 14.2+. Using BlackHole.")
         print()
@@ -488,6 +498,68 @@ def _mask(s: str) -> str:
     if not s:
         return ""
     return s[:4] + "****" if len(s) > 4 else "****"
+
+
+def _build_audiotee() -> bool:
+    """
+    Clone audiotee from GitHub, build with Swift, and install to /usr/local/bin/.
+    Prints progress to stdout. Returns True on success, False on any failure.
+    Build takes ~60–90 seconds on a typical Mac.
+    """
+    import shutil, subprocess, tempfile
+
+    tmpdir = tempfile.mkdtemp(prefix="meetingscribe_audiotee_")
+    clone_dir = os.path.join(tmpdir, "audiotee")
+    dest = "/usr/local/bin/audiotee"
+
+    try:
+        print(c(YELLOW, "  [1/3] Cloning audiotee from GitHub…"))
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1",
+             "https://github.com/makeusabrew/audiotee.git", clone_dir],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            print(c(RED, f"  git clone failed:\n    {result.stderr.strip()}"))
+            return False
+
+        print(c(YELLOW, "  [2/3] Building with Swift (this takes ~60–90s)…"))
+        result = subprocess.run(
+            ["swift", "build", "-c", "release", "-Xswiftc", "-suppress-warnings"],
+            cwd=clone_dir,
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            # Show the last 1500 chars of stderr so the user sees what went wrong
+            tail = result.stderr[-1500:].strip()
+            print(c(RED, f"  swift build failed:\n{tail}"))
+            return False
+
+        binary = os.path.join(clone_dir, ".build", "release", "audiotee")
+        if not os.path.isfile(binary):
+            print(c(RED, f"  Build succeeded but binary not found at: {binary}"))
+            return False
+
+        print(c(YELLOW, f"  [3/3] Installing to {dest}…"))
+        result = subprocess.run(["cp", binary, dest], capture_output=True, text=True)
+        if result.returncode != 0:
+            # /usr/local/bin may need sudo on some Macs
+            print(c(YELLOW, "      cp failed — trying with sudo (you may be prompted for your password):"))
+            result = subprocess.run(["sudo", "cp", binary, dest])
+            if result.returncode != 0:
+                print(c(RED, f"  Install failed. Copy it manually:"))
+                print(c(RED, f"      sudo cp {binary} {dest}"))
+                return False
+
+        subprocess.run(["chmod", "+x", dest], capture_output=True)
+        print(c(GREEN, "  ✓ audiotee installed. Driver-free audio capture is now active."))
+        return True
+
+    except Exception as e:
+        print(c(RED, f"  Build error: {e}"))
+        return False
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

@@ -380,7 +380,7 @@ Set these via `python cli.py setup` (shows an interactive preset table) or via t
 
 When a microphone device is configured, MeetingScribe runs two audio streams in parallel:
 
-- **Loopback stream** (BlackHole/PulseAudio) — captures all meeting audio; speakers identified by pyannote diarization as "Speaker 1", "Speaker 2", etc.
+- **Loopback stream** (audiotee on macOS 14.2+ / BlackHole on macOS ≤13 / PulseAudio on Linux) — captures all meeting audio; speakers identified by pyannote diarization as "Speaker 1", "Speaker 2", etc.
 - **Microphone stream** — captures your voice directly from your mic; every segment labeled with your name (e.g. `[Zach]`)
 
 Both streams are transcribed independently using faster-whisper, then merged and sorted by timestamp before the summarizer sees the transcript.
