@@ -20,7 +20,7 @@ class CrossChunkSpeakerTracker:
     Maintains consistent global speaker identities across 30-second audio chunks
     by comparing per-speaker embeddings via cosine similarity.
     """
-    SIMILARITY_THRESHOLD = 0.75  # cosine similarity; higher = stricter matching
+    SIMILARITY_THRESHOLD = 0.65  # cosine similarity; higher = stricter matching
 
     def __init__(self) -> None:
         self._registry: list[tuple[str, "np.ndarray"]] = []  # [(global_label, normed_embedding)]
@@ -140,6 +140,19 @@ class Transcriber:
                 )
                 import torch
                 self._diarizer.to(torch.device("cpu"))
+
+                # Tune clustering to reduce the "same speaker → two labels" problem.
+                # The default threshold (~0.70) is optimised for large diverse datasets.
+                # Lowering it makes pyannote merge embeddings more aggressively, which
+                # is appropriate for typical meetings with 2–4 distinct voices.
+                # min_duration_off=0.0 prevents splitting a speaker on short pauses.
+                try:
+                    self._diarizer.instantiate({
+                        "segmentation": {"min_duration_off": 0.0},
+                        "clustering": {"threshold": 0.55},
+                    })
+                except Exception:
+                    pass
 
                 # Set up embedding inference for cross-chunk speaker tracking
                 if hasattr(self._diarizer, "embedding"):
