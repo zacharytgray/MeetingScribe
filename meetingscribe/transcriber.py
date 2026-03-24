@@ -115,16 +115,11 @@ class Transcriber:
         if self.use_diarization and self.hf_token:
             try:
                 from pyannote.audio import Pipeline, Inference
-                try:
-                    self._diarizer = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        token=self.hf_token,
-                    )
-                except TypeError:
-                    self._diarizer = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        use_auth_token=self.hf_token,
-                    )
+                from huggingface_hub import login
+                login(token=self.hf_token, add_to_git_credential=False)
+                self._diarizer = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                )
 
                 # Set up embedding inference for cross-chunk speaker tracking
                 if hasattr(self._diarizer, "embedding"):
