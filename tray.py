@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 import platform
 import subprocess
@@ -114,6 +116,23 @@ class TrayApp:
                     lambda _: f"Diarization: {'on' if self._config.use_diarization else 'off'}",
                     self._toggle_diarization,
                 ),
+                item(
+                    lambda _: f"Meeting size: {self._meeting_size_label()}",
+                    pystray.Menu(
+                        item("1-on-1 (2 people)",        self._make_meeting_size_setter(0.45, 0.60, 60)),
+                        item("Small team (3–4) ← default", self._make_meeting_size_setter(0.55, 0.65, 30)),
+                        item("Medium meeting (5–7)",      self._make_meeting_size_setter(0.65, 0.70, 30)),
+                        item("Large meeting (8+)",        self._make_meeting_size_setter(0.72, 0.75, 30)),
+                    ),
+                ),
+                item(
+                    lambda _: f"Chunk: {self._config.chunk_seconds}s",
+                    pystray.Menu(
+                        item("30s — low latency (default)", self._make_chunk_setter(30)),
+                        item("60s — better quality",        self._make_chunk_setter(60)),
+                        item("90s — best quality",          self._make_chunk_setter(90)),
+                    ),
+                ),
             )),
             pystray.Menu.SEPARATOR,
             item("Quit", self._on_quit),
@@ -211,6 +230,30 @@ class TrayApp:
             save_config(self._config)
         return _set
 
+    def _meeting_size_label(self) -> str:
+        dt = self._config.diarization_threshold
+        if dt <= 0.50:
+            return "1-on-1"
+        if dt <= 0.60:
+            return "small team"
+        if dt <= 0.68:
+            return "medium"
+        return "large"
+
+    def _make_meeting_size_setter(self, diarization_threshold: float, tracker_threshold: float, chunk_seconds: int):
+        def _set(icon, menu_item):
+            self._config.diarization_threshold = diarization_threshold
+            self._config.speaker_tracker_threshold = tracker_threshold
+            self._config.chunk_seconds = chunk_seconds
+            save_config(self._config)
+        return _set
+
+    def _make_chunk_setter(self, seconds: int):
+        def _set(icon, menu_item):
+            self._config.chunk_seconds = seconds
+            save_config(self._config)
+        return _set
+
     def _on_quit(self, icon, menu_item) -> None:
         if self._recording and self._session:
             self._session.stop()
@@ -243,6 +286,13 @@ def _open_file(path: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # Pre-initialize torch in the main thread before pystray starts NSApplication.
+    # On macOS, torch initializes multiprocessing semaphores and system frameworks
+    # during first use; doing this from a secondary thread after AppKit is running
+    # can cause a segfault.
+    import torch
+    torch.zeros(1)
+
     app = TrayApp()
     app.run()
 

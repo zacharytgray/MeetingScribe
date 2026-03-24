@@ -20,11 +20,10 @@ class CrossChunkSpeakerTracker:
     Maintains consistent global speaker identities across 30-second audio chunks
     by comparing per-speaker embeddings via cosine similarity.
     """
-    SIMILARITY_THRESHOLD = 0.75  # cosine similarity; higher = stricter matching
-
-    def __init__(self) -> None:
+    def __init__(self, similarity_threshold: float = 0.65) -> None:
         self._registry: list[tuple[str, "np.ndarray"]] = []  # [(global_label, normed_embedding)]
         self._counter = 0
+        self.similarity_threshold = similarity_threshold
 
     def resolve(self, chunk_embeddings: dict[str, "np.ndarray"]) -> dict[str, str]:
         """
@@ -49,7 +48,7 @@ class CrossChunkSpeakerTracker:
                     best_sim = sim
                     best_label = global_label
 
-            if best_label is not None and best_sim >= self.SIMILARITY_THRESHOLD:
+            if best_label is not None and best_sim >= self.similarity_threshold:
                 # Same speaker — update running average
                 for i, (lbl, known_emb) in enumerate(self._registry):
                     if lbl == best_label:
@@ -82,6 +81,8 @@ class Transcriber:
         on_segment: Optional[Callable[[TranscriptSegment], None]] = None,
         language: str = "en",
         default_speaker: Optional[str] = None,
+        diarization_threshold: float = 0.55,
+        speaker_tracker_threshold: float = 0.65,
     ) -> None:
         self.whisper_model_name = whisper_model
         self.use_diarization = use_diarization
@@ -96,7 +97,8 @@ class Transcriber:
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
         self._elapsed_offset: float = 0.0
-        self._speaker_tracker = CrossChunkSpeakerTracker()
+        self.diarization_threshold = diarization_threshold
+        self._speaker_tracker = CrossChunkSpeakerTracker(similarity_threshold=speaker_tracker_threshold)
 
         # Loaded lazily / explicitly via load_models()
         self._whisper = None
@@ -114,17 +116,45 @@ class Transcriber:
 
         if self.use_diarization and self.hf_token:
             try:
+                import huggingface_hub
+
+                # pyannote/audio/core/pipeline.py does:
+                #   from huggingface_hub import hf_hub_download   (module level)
+                #   hf_hub_download(..., use_auth_token=token)    (line ~102)
+                # huggingface_hub >=0.23 removed use_auth_token from hf_hub_download.
+                # We must patch huggingface_hub.hf_hub_download BEFORE importing
+                # pyannote so that pyannote's module-level `from ... import` picks
+                # up our version.
+                if not getattr(huggingface_hub.hf_hub_download, "_auth_compat_patched", False):
+                    _orig_download = huggingface_hub.hf_hub_download
+                    def _compat_download(*args, use_auth_token=None, **kwargs):
+                        if use_auth_token is not None:
+                            kwargs.setdefault("token", use_auth_token)
+                        return _orig_download(*args, **kwargs)
+                    _compat_download._auth_compat_patched = True
+                    huggingface_hub.hf_hub_download = _compat_download
+
                 from pyannote.audio import Pipeline, Inference
+
+                self._diarizer = Pipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=self.hf_token,
+                )
+                import torch
+                self._diarizer.to(torch.device("cpu"))
+
+                # Tune clustering to reduce the "same speaker → two labels" problem.
+                # The default threshold (~0.70) is optimised for large diverse datasets.
+                # Lowering it makes pyannote merge embeddings more aggressively, which
+                # is appropriate for typical meetings with 2–4 distinct voices.
+                # min_duration_off=0.0 prevents splitting a speaker on short pauses.
                 try:
-                    self._diarizer = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        token=self.hf_token,
-                    )
-                except TypeError:
-                    self._diarizer = Pipeline.from_pretrained(
-                        "pyannote/speaker-diarization-3.1",
-                        use_auth_token=self.hf_token,
-                    )
+                    self._diarizer.instantiate({
+                        "segmentation": {"min_duration_off": 0.0},
+                        "clustering": {"threshold": self.diarization_threshold},
+                    })
+                except Exception:
+                    pass
 
                 # Set up embedding inference for cross-chunk speaker tracking
                 if hasattr(self._diarizer, "embedding"):
@@ -177,30 +207,41 @@ class Transcriber:
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
-                path = self.chunk_queue.get(timeout=1.0)
+                item = self.chunk_queue.get(timeout=1.0)
             except queue.Empty:
                 continue
             try:
-                self._process_chunk(path)
+                self._process_item(item)
             except Exception as e:
-                print(f"[transcriber] error processing {path.name}: {e}")
+                path, _ = item
+                print(f"[transcriber] error processing {path}: {e}")
             finally:
                 self.chunk_queue.task_done()
 
         # Drain remaining items after stop signal
         while True:
             try:
-                path = self.chunk_queue.get_nowait()
+                item = self.chunk_queue.get_nowait()
                 try:
-                    self._process_chunk(path)
+                    self._process_item(item)
                 except Exception as e:
-                    print(f"[transcriber] error processing {path.name}: {e}")
+                    pass
                 finally:
                     self.chunk_queue.task_done()
             except queue.Empty:
                 break
 
-    def _process_chunk(self, path: Path) -> None:
+    def _process_item(self, item: tuple) -> None:
+        path, duration = item
+        if path is None:
+            # Silent chunk — advance clock to keep timestamps in sync with the
+            # other stream (mic or loopback). No Whisper needed.
+            with self._lock:
+                self._elapsed_offset += duration
+            return
+        self._process_chunk(path, duration)
+
+    def _process_chunk(self, path: Path, duration: float) -> None:
         if self._whisper is None:
             raise RuntimeError("Models not loaded. Call load_models() first.")
 
@@ -228,8 +269,7 @@ class Transcriber:
                 if self.on_segment:
                     self.on_segment(ts)
 
-            import soundfile as sf
-            self._elapsed_offset += sf.info(str(path)).duration
+            self._elapsed_offset += duration
 
     def _diarize(self, path: Path, whisper_segs: list) -> dict[tuple[float, float], str]:
         """Run pyannote diarization; return map of (start, end) → global speaker label."""

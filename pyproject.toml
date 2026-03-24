@@ -5,8 +5,39 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meetingscribe"
 version = "0.1.0"
-description = "Transcribe and summarize meetings using local Whisper + Claude API"
+description = "Privacy-first meeting transcription and summarization — local Whisper, speaker diarization, AI summaries"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Zachary Gray", email = "zacharytgray@gmail.com" },
+]
+keywords = [
+    "meeting",
+    "transcription",
+    "summarization",
+    "whisper",
+    "diarization",
+    "privacy",
+    "speech-to-text",
+    "ai",
+    "claude",
+    "openrouter",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Office/Business",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "faster-whisper>=1.0.0",
     "sounddevice>=0.4.6",
@@ -18,6 +49,11 @@ dependencies = [
     "pystray>=0.19.4",
     "Pillow>=10.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/zacharytgray/MeetingScribe"
+Repository = "https://github.com/zacharytgray/MeetingScribe"
+"Bug Tracker" = "https://github.com/zacharytgray/MeetingScribe/issues"
 
 [project.scripts]
 meetingscribe = "meetingscribe.cli_entry:main"
