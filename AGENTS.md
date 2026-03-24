@@ -275,6 +275,8 @@ Model loading happens in a background thread on Start. Live transcript is writte
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key (fallback if not in config) |
 | `OPENROUTER_API_KEY` | OpenRouter API key (fallback if not in config) |
+| `OPENAI_API_KEY` | OpenAI API key (fallback if not in config) |
+| `GEMINI_API_KEY` | Google Gemini API key (fallback if not in config) |
 | `HF_TOKEN` | HuggingFace token for pyannote diarization (fallback if not in config) |
 | `KMP_DUPLICATE_LIB_OK` | Set to `TRUE` at top of cli.py and tray.py to suppress OpenMP duplicate lib crash |
 

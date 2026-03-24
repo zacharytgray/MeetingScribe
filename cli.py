@@ -74,7 +74,7 @@ def cmd_setup(_args: argparse.Namespace) -> None:
         cfg.anthropic_api_key = val
 
     # OpenRouter API key
-    print(f"\nOpenRouter is a free alternative for summarization (free models available).")
+    print(f"\nOpenRouter gives access to many models through one API, including free ones.")
     print(f"Get a key at openrouter.ai — leave blank to skip.")
     val = input(f"OpenRouter API key [{_mask(cfg.openrouter_api_key)}]: ").strip()
     if val:
@@ -83,6 +83,26 @@ def cmd_setup(_args: argparse.Namespace) -> None:
         val = input(f"OpenRouter model [{cfg.openrouter_model}]: ").strip()
         if val:
             cfg.openrouter_model = val
+
+    # OpenAI API key
+    print(f"\nOpenAI — leave blank to skip.")
+    val = input(f"OpenAI API key [{_mask(cfg.openai_api_key)}]: ").strip()
+    if val:
+        cfg.openai_api_key = val
+    if cfg.openai_api_key:
+        val = input(f"OpenAI model [{cfg.openai_model}]: ").strip()
+        if val:
+            cfg.openai_model = val
+
+    # Gemini API key
+    print(f"\nGoogle Gemini — leave blank to skip.")
+    val = input(f"Gemini API key [{_mask(cfg.gemini_api_key)}]: ").strip()
+    if val:
+        cfg.gemini_api_key = val
+    if cfg.gemini_api_key:
+        val = input(f"Gemini model [{cfg.gemini_model}]: ").strip()
+        if val:
+            cfg.gemini_model = val
 
     # HuggingFace token
     val = input(f"HuggingFace token (for speaker diarization) [{_mask(cfg.hf_token)}]: ").strip()

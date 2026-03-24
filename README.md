@@ -157,6 +157,8 @@ export HF_TOKEN="hf_..."
 
 MeetingScribe only needs an API key for **summarization** — transcription is always local. You can also skip summarization entirely and save the raw transcript.
 
+If multiple keys are configured, the priority order is: **OpenRouter → Anthropic → OpenAI → Gemini**.
+
 ### Option A: Anthropic Claude (Paid)
 
 1. Sign up at [console.anthropic.com](https://console.anthropic.com)
@@ -165,7 +167,22 @@ MeetingScribe only needs an API key for **summarization** — transcription is a
 
 Uses `claude-sonnet-4-20250514` by default. Produces the highest quality summaries.
 
-### Option B: OpenRouter (Free models available)
+### Option B: OpenAI (Paid)
+
+1. Sign up at [platform.openai.com](https://platform.openai.com)
+2. Create an API key and add credits
+3. Paste the key into `python cli.py setup`
+
+Uses `gpt-4o-mini` by default — fast and cost-effective for summarization. Change to `gpt-4o` for higher quality.
+
+### Option C: Google Gemini (Paid, generous free tier)
+
+1. Get an API key at [aistudio.google.com](https://aistudio.google.com)
+2. Paste the key into `python cli.py setup`
+
+Uses `gemini-2.0-flash` by default. Gemini API keys include a free tier that is sufficient for typical meeting usage.
+
+### Option D: OpenRouter (Free models available)
 
 [OpenRouter](https://openrouter.ai) provides access to dozens of models through a single API, including several free-tier options that work well for meeting summarization.
 
@@ -186,7 +203,7 @@ Uses `claude-sonnet-4-20250514` by default. Produces the highest quality summari
 
 Free models on OpenRouter have rate limits but are sufficient for typical meeting usage (one meeting = one API call).
 
-### Option C: No API key
+### Option E: No API key
 
 Skip summarization entirely — MeetingScribe will save the raw timestamped transcript as a markdown file.
 

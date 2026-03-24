@@ -12,6 +12,8 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
 OPENROUTER_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+GEMINI_DEFAULT_MODEL = "gemini-2.0-flash"
 
 
 @dataclass
@@ -20,6 +22,10 @@ class Config:
     anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_model: str = OPENROUTER_DEFAULT_MODEL
+    openai_api_key: str = ""
+    openai_model: str = OPENAI_DEFAULT_MODEL
+    gemini_api_key: str = ""
+    gemini_model: str = GEMINI_DEFAULT_MODEL
     hf_token: str = ""
     whisper_model: str = "base"  # tiny | base | small | medium | large-v3
     use_diarization: bool = True
@@ -37,6 +43,14 @@ class Config:
     @property
     def effective_openrouter_key(self) -> str:
         return self.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "")
+
+    @property
+    def effective_openai_key(self) -> str:
+        return self.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
+
+    @property
+    def effective_gemini_key(self) -> str:
+        return self.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
 
     @property
     def effective_hf_token(self) -> str:

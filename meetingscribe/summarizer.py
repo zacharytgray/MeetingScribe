@@ -8,6 +8,11 @@ from typing import Optional
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 MAX_TOKENS = 2048
 
+# OpenAI-compatible endpoints for each provider
+_OPENROUTER_URL = "https://openrouter.ai/api/v1"
+_OPENAI_URL = "https://api.openai.com/v1"
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
 SYSTEM_PROMPT = """\
 You are MeetingScribe. Given a meeting transcript, output a structured markdown summary.
 
@@ -51,10 +56,15 @@ def summarize(
     duration_seconds: Optional[float] = None,
     openrouter_api_key: str = "",
     openrouter_model: str = "",
+    openai_api_key: str = "",
+    openai_model: str = "",
+    gemini_api_key: str = "",
+    gemini_model: str = "",
     user_name: str = "",
 ) -> tuple[str, str]:
     """
-    Summarize via Claude API (if api_key set) or OpenRouter (if openrouter_api_key set).
+    Summarize via one of the supported providers.
+    Priority: OpenRouter → Anthropic → OpenAI → Gemini.
     Returns (slug, markdown_content). Raises on failure.
     """
     date_str = (meeting_date or datetime.datetime.now()).strftime("%B %-d, %Y at %-I:%M %p")
@@ -72,10 +82,18 @@ def summarize(
     context_lines.append(f"\nTranscript:\n{transcript}")
     user_content = "\n".join(context_lines)
 
+    from .config import OPENROUTER_DEFAULT_MODEL, OPENAI_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL
+
     if openrouter_api_key:
-        raw = _call_openrouter(user_content, openrouter_api_key, openrouter_model)
-    else:
+        raw = _call_openai_compat(_OPENROUTER_URL, openrouter_api_key, openrouter_model or OPENROUTER_DEFAULT_MODEL, user_content)
+    elif api_key:
         raw = _call_anthropic(user_content, api_key)
+    elif openai_api_key:
+        raw = _call_openai_compat(_OPENAI_URL, openai_api_key, openai_model or OPENAI_DEFAULT_MODEL, user_content)
+    elif gemini_api_key:
+        raw = _call_openai_compat(_GEMINI_URL, gemini_api_key, gemini_model or GEMINI_DEFAULT_MODEL, user_content)
+    else:
+        raise ValueError("No API key provided.")
 
     return _parse_response(raw, meeting_date)
 
@@ -92,17 +110,17 @@ def _call_anthropic(user_content: str, api_key: str) -> str:
     return message.content[0].text
 
 
-def _call_openrouter(user_content: str, api_key: str, model: str) -> str:
+def _call_openai_compat(base_url: str, api_key: str, model: str, user_content: str) -> str:
+    """Call any OpenAI-compatible chat completions endpoint (OpenRouter, OpenAI, Gemini)."""
     import httpx
-    from .config import OPENROUTER_DEFAULT_MODEL
     response = httpx.post(
-        "https://openrouter.ai/api/v1/chat/completions",
+        f"{base_url}/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
         json={
-            "model": model or OPENROUTER_DEFAULT_MODEL,
+            "model": model,
             "max_tokens": MAX_TOKENS,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -171,7 +189,7 @@ def save_summary(
 
 
 def save_raw_transcript(transcript: str, output_dir: Path, meeting_date: Optional[datetime.datetime] = None) -> Path:
-    """Fallback: save raw transcript when Claude API is unavailable."""
+    """Fallback: save raw transcript when no API key is configured."""
     output_dir.mkdir(parents=True, exist_ok=True)
     date_prefix = (meeting_date or datetime.datetime.now()).strftime("%Y-%m-%d")
     path = output_dir / f"{date_prefix}_transcript.md"
