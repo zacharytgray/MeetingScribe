@@ -91,8 +91,12 @@ Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and
 `meetingscribe ...` is the primary CLI interface and has the same behavior as running `python cli.py ...` from the project root; the wrapper just dispatches to the same code with the managed venv.
 
 `meetingscribe setup` does not install dependencies, create the venv, install launchers, or set up OS-level audio requirements. It only configures MeetingScribe after installation is complete.
+Do not run both the installer script and the manual install steps for the same setup unless you intentionally want two separate environments. Manual install is an alternative workflow, not an additional required step.
 
 ### Manual macOS Install
+
+Use this only if you want to manage your own project-local venv instead of the installer-managed environment above.
+With this approach, `meetingscribe` works while that venv is activated; otherwise run `python cli.py ...` from the repo root.
 
 ```bash
 # 1. Clone the repo
@@ -136,6 +140,9 @@ brew install blackhole-2ch
 4. Set this Multi-Output Device as your system output in System Settings → Sound
 
 ### Manual Linux Install
+
+Use this only if you want to manage your own project-local venv instead of the installer-managed environment above.
+With this approach, `meetingscribe` works while that venv is activated; otherwise run `python cli.py ...` from the repo root.
 
 ```bash
 # Install system dependencies (Ubuntu/Debian)
