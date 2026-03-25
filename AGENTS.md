@@ -272,7 +272,7 @@ Pillow>=10.0.0              # Icon rendering for tray
 `httpx` is used by `_call_openai_compat()` in `summarizer.py` (for OpenAI, Gemini, OpenRouter, and Ollama providers) but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
 
 ### System dependencies
-- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `python cli.py setup` offers to build it automatically. No virtual driver required.
+- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `meetingscribe setup` offers to build it automatically. No virtual driver required.
 - **macOS ≤13**: BlackHole virtual audio driver (`brew install blackhole-2ch`) + Multi-Output Device in Audio MIDI Setup. Background Music (`brew install --cask background-music`) does **not** fix volume control with BlackHole — this is a macOS architectural limitation. Use audiotee (upgrade to macOS 14+) to get working volume control.
 - **Linux**: PulseAudio or PipeWire monitor sources; `portaudio19-dev`, `libsndfile1`, `ffmpeg` via apt/dnf/pacman
 
@@ -287,14 +287,14 @@ PyTorch and ctranslate2 both bundle `libiomp5.dylib` on macOS. Both `cli.py` and
 ## CLI Commands
 
 ```bash
-python cli.py setup              # Interactive first-time wizard
-python cli.py start              # Start recording session
-python cli.py start -m small     # Use a specific Whisper model
-python cli.py start -d 6         # Use audio device index 6
-python cli.py start --no-diarization
-python cli.py devices            # List available audio input devices
-python cli.py config             # Show current configuration
-python cli.py test-audio -d 6 -t 5 -s   # Record 5s from device 6, report amplitude, save WAV
+meetingscribe setup              # Interactive first-time wizard
+meetingscribe start              # Start recording session
+meetingscribe start -m small     # Use a specific Whisper model
+meetingscribe start -d 6         # Use audio device index 6
+meetingscribe start --no-diarization
+meetingscribe devices            # List available audio input devices
+meetingscribe config             # Show current configuration
+meetingscribe test-audio -d 6 -t 5 -s   # Record 5s from device 6, report amplitude, save WAV
 ```
 
 **During a session (type + Enter):**
@@ -308,7 +308,7 @@ python cli.py test-audio -d 6 -t 5 -s   # Record 5s from device 6, report amplit
 
 ## Tray App (`tray.py`)
 
-Run with `python tray.py` or `meetingscribe-tray`. Uses `pystray` with a custom mic icon drawn via Pillow. Grey = idle, Red = recording.
+Run with `meetingscribe-tray` (or `python tray.py` during development). Uses `pystray` with a custom mic icon drawn via Pillow. Grey = idle, Red = recording.
 
 Menu: Start Recording / Stop & Summarize / Show Live Transcript / Open Last Note / Open Notes Folder / Settings / Quit
 
@@ -360,16 +360,21 @@ Model loading happens in a background thread on Start. Live transcript is writte
 ## How to Run During Development
 
 ```bash
-# From project root (no install needed)
+# Installed commands (primary usage)
+meetingscribe setup
+meetingscribe start
+meetingscribe devices
+meetingscribe test-audio -d 6 -t 5
+meetingscribe-tray
+
+# Development from project root (without install)
 python cli.py setup
 python cli.py start
 python cli.py devices
 python cli.py test-audio -d 6 -t 5
-
-# Tray app
 python tray.py
 
-# Or install in editable mode
+# Editable install
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install torch        # macOS: no --index-url
 pip install -e .

@@ -83,7 +83,7 @@ pip install torch          # macOS: PyTorch installs directly from PyPI
 pip install -e .
 
 # 3. Configure
-python cli.py setup
+meetingscribe setup
 ```
 
 **macOS 14.2+ (Sonoma) — driver-free setup:**
@@ -125,7 +125,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
 
-python cli.py setup
+meetingscribe setup
 ```
 
 ### Or use the install script
@@ -137,6 +137,7 @@ bash scripts/install_linux.sh  # Linux
 
 Both installer scripts create `meetingscribe` and `meetingscribe-tray` launchers in `~/.local/bin`.
 Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and if `~/.local/bin` is not already on `PATH`, the installer adds it to your shell startup file automatically.
+`meetingscribe ...` is the primary CLI interface and has the same behavior as running `python cli.py ...` from the project root; the wrapper just dispatches to the same code with the managed venv.
 
 ---
 
@@ -145,7 +146,7 @@ Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and
 Run the interactive setup wizard:
 
 ```bash
-python cli.py setup
+meetingscribe setup
 ```
 
 You'll be prompted for:
@@ -179,7 +180,7 @@ export HF_TOKEN="hf_..."
 
 MeetingScribe only needs a provider for **summarization** — transcription is always fully local. Audio never leaves your machine; only the text transcript is sent to whichever provider you choose (or you can skip summarization entirely).
 
-During `python cli.py setup` you'll see a numbered menu to pick which provider(s) to configure — only the ones you select will prompt for credentials. If you configure multiple providers you'll set a priority order; the first active provider in that order is used each session. You can also change priority at any time from the tray **Settings → Summary via** submenu.
+During `meetingscribe setup` you'll see a numbered menu to pick which provider(s) to configure — only the ones you select will prompt for credentials. If you configure multiple providers you'll set a priority order; the first active provider in that order is used each session. You can also change priority at any time from the tray **Settings → Summary via** submenu.
 
 ### Option A: Ollama — fully local, no API key
 
@@ -187,7 +188,7 @@ During `python cli.py setup` you'll see a numbered menu to pick which provider(s
 
 1. Install Ollama from [ollama.ai](https://ollama.ai)
 2. Pull a model: `ollama pull llama3.2`
-3. Run `python cli.py setup` and select **Ollama**; enter the model name
+3. Run `meetingscribe setup` and select **Ollama**; enter the model name
 
 Popular models for summarization: `llama3.2`, `mistral`, `gemma3`, `phi4`.
 
@@ -195,7 +196,7 @@ Popular models for summarization: `llama3.2`, `mistral`, `gemma3`, `phi4`.
 
 1. Sign up at [console.anthropic.com](https://console.anthropic.com)
 2. Add credits ($5 minimum) and create an API key
-3. Run `python cli.py setup` and select **Anthropic**
+3. Run `meetingscribe setup` and select **Anthropic**
 
 Uses `claude-sonnet-4-20250514`. Produces the highest quality summaries.
 
@@ -203,14 +204,14 @@ Uses `claude-sonnet-4-20250514`. Produces the highest quality summaries.
 
 1. Sign up at [platform.openai.com](https://platform.openai.com)
 2. Create an API key and add credits
-3. Run `python cli.py setup` and select **OpenAI**
+3. Run `meetingscribe setup` and select **OpenAI**
 
 Uses `gpt-4o-mini` by default — fast and cost-effective. Change to `gpt-4o` for higher quality.
 
 ### Option D: Google Gemini (Paid, generous free tier)
 
 1. Get a free API key at [aistudio.google.com](https://aistudio.google.com)
-2. Run `python cli.py setup` and select **Google Gemini**
+2. Run `meetingscribe setup` and select **Google Gemini**
 
 Uses `gemini-2.0-flash`. The free tier is sufficient for typical meeting usage.
 
@@ -219,7 +220,7 @@ Uses `gemini-2.0-flash`. The free tier is sufficient for typical meeting usage.
 [OpenRouter](https://openrouter.ai) provides access to dozens of models through a single API, including free-tier options.
 
 1. Sign up at [openrouter.ai](https://openrouter.ai) and create a free API key
-2. Run `python cli.py setup` and select **OpenRouter**
+2. Run `meetingscribe setup` and select **OpenRouter**
 
 **Recommended free models:**
 
@@ -246,24 +247,24 @@ Skip summarization entirely — MeetingScribe saves the raw timestamped transcri
 
 ```bash
 # Start a recording session
-python cli.py start
+meetingscribe start
 
 # With specific options
-python cli.py start -m small           # use a larger Whisper model
-python cli.py start -d 6               # specify audio device index
-python cli.py start --no-diarization   # skip speaker identification
+meetingscribe start -m small           # use a larger Whisper model
+meetingscribe start -d 6               # specify audio device index
+meetingscribe start --no-diarization   # skip speaker identification
 
 # List available audio input devices
-python cli.py devices
+meetingscribe devices
 
 # Test audio capture from a device (run while audio is playing)
-python cli.py test-audio -d 6 -t 5 -s
+meetingscribe test-audio -d 6 -t 5 -s
 
 # Show current configuration
-python cli.py config
+meetingscribe config
 
 # Re-run setup wizard
-python cli.py setup
+meetingscribe setup
 ```
 
 **During a recording session (type + Enter):**
@@ -279,7 +280,7 @@ python cli.py setup
 ### System Tray App
 
 ```bash
-python tray.py
+meetingscribe-tray
 ```
 
 A microphone icon appears in your menu bar (grey = idle, red = recording). Menu options: Start / Stop & Summarize / Show Live Transcript / Open Last Note / Open Notes Folder / Settings.
@@ -348,7 +349,7 @@ Speaker identification requires a free [HuggingFace](https://huggingface.co) acc
 1. Sign up at [huggingface.co](https://huggingface.co)
 2. Create an access token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (Read access only)
 3. Accept the model terms at [huggingface.co/pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
-4. Paste your token into `python cli.py setup`
+4. Paste your token into `meetingscribe setup`
 
 Speaker labels persist across 30-second chunks using embedding-based matching, so "Speaker 1" refers to the same person throughout the recording.
 
@@ -371,7 +372,7 @@ Speaker diarization involves two thresholds that trade off between **fewer false
 
 **`chunk_seconds`** — audio window per transcription pass. Longer windows give pyannote more context and generally improve accuracy, but delay when the first transcript line appears (a 60s chunk produces no output for 60 seconds).
 
-Set these via `python cli.py setup` (shows an interactive preset table) or via the **Settings → Meeting size** and **Settings → Chunk** menus in the tray app.
+Set these via `meetingscribe setup` (shows an interactive preset table) or via the **Settings → Meeting size** and **Settings → Chunk** menus in the tray app.
 
 > **Note:** Changes made in the tray menu take effect for the *next* recording session. The thresholds and chunk size are read when you click **Start Recording** — adjusting them mid-session has no effect on the current session.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MeetingScribe system tray / menu bar app. Run: python tray.py"""
+"""MeetingScribe system tray / menu bar app. Primary usage: meetingscribe-tray."""
 from __future__ import annotations
 
 import os

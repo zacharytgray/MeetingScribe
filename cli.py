@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MeetingScribe CLI entry point. Run directly: python cli.py <command>"""
+"""MeetingScribe CLI entry point. Primary usage: meetingscribe <command>."""
 from __future__ import annotations
 
 import os
