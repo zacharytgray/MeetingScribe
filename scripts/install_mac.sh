@@ -4,9 +4,9 @@
 # and writes launcher scripts to ~/.local/bin.
 set -euo pipefail
 
-VENV_DIR="$HOME/.meetingscribe/venv"
-BIN_DIR="$HOME/.local/bin"
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+: "${VENV_DIR:=$HOME/.meetingscribe/venv}"
+: "${BIN_DIR:=$HOME/.local/bin}"
+: "${REPO_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 echo "=== MeetingScribe macOS Installer ==="
 echo
