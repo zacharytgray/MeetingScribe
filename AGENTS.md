@@ -39,8 +39,10 @@ meetingscribe/
 │                                       _make_loopback_recorder() factory
 └── scripts/
     ├── install_mac.sh               ← macOS installer (builds audiotee from source on macOS 14.2+,
-    │                                   creates ~/.local/bin launchers that resolve the venv via $HOME)
-    └── install_linux.sh             ← Linux installer (creates the same $HOME-based launchers)
+    │                                   creates ~/.local/bin launchers that resolve the venv via $HOME
+    │                                   and adds ~/.local/bin to PATH when needed)
+    └── install_linux.sh             ← Linux installer (creates the same $HOME-based launchers and
+                                        adds ~/.local/bin to PATH when needed)
 ```
 
 ---

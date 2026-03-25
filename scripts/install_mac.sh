@@ -123,12 +123,30 @@ chmod +x "$BIN_DIR/meetingscribe-tray"
 echo "[✓] Launcher scripts written to $BIN_DIR"
 
 # ---------------------------------------------------------------------------
-# 6. PATH reminder
+# 6. Ensure BIN_DIR is on PATH
 # ---------------------------------------------------------------------------
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-  echo
-  echo "[i] Add $BIN_DIR to your PATH. Add this to ~/.zshrc or ~/.bash_profile:"
-  echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+  SHELL_NAME="$(basename "${SHELL:-}")"
+  case "$SHELL_NAME" in
+    zsh) RC_FILE="$HOME/.zprofile" ;;
+    bash) RC_FILE="$HOME/.bash_profile" ;;
+    *) RC_FILE="$HOME/.profile" ;;
+  esac
+
+  PATH_LINE="export PATH=\"$BIN_DIR:\$PATH\""
+  touch "$RC_FILE"
+
+  if ! grep -Fqx "$PATH_LINE" "$RC_FILE"; then
+    echo >> "$RC_FILE"
+    echo "# Added by MeetingScribe installer" >> "$RC_FILE"
+    echo "$PATH_LINE" >> "$RC_FILE"
+    echo "[+] Added $BIN_DIR to PATH in $RC_FILE"
+  else
+    echo "[i] PATH entry for $BIN_DIR already exists in $RC_FILE"
+  fi
+
+  echo "[i] Open a new terminal, or run:"
+  echo "    export PATH=\"$BIN_DIR:\$PATH\""
 fi
 
 echo

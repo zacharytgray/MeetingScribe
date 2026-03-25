@@ -136,7 +136,7 @@ bash scripts/install_linux.sh  # Linux
 ```
 
 Both installer scripts create `meetingscribe` and `meetingscribe-tray` launchers in `~/.local/bin`.
-Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, so the same launcher pattern works on both Linux and macOS without hardcoding `/home/...` paths.
+Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and if `~/.local/bin` is not already on `PATH`, the installer adds it to your shell startup file automatically.
 
 ---
 
