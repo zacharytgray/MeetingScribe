@@ -167,6 +167,19 @@ class Transcriber:
                              "bits_per_sample", "encoding"],
                         )
 
+                # torchaudio >= 2.0 removed several top-level backend functions
+                # that older pyannote versions reference.
+                if not hasattr(_ta, "list_audio_backends"):
+                    try:
+                        from torchaudio._backend import list_audio_backends as _lab
+                        _ta.list_audio_backends = _lab
+                    except (ImportError, AttributeError):
+                        _ta.list_audio_backends = lambda: ["soundfile"]
+                if not hasattr(_ta, "get_audio_backend"):
+                    _ta.get_audio_backend = lambda: "soundfile"
+                if not hasattr(_ta, "set_audio_backend"):
+                    _ta.set_audio_backend = lambda *a, **kw: None
+
                 # PyTorch >= 2.6 defaults torch.load to weights_only=True and
                 # requires all globals to be explicitly allowlisted.
                 # TorchVersion is used in pyannote model checkpoints.
