@@ -72,13 +72,17 @@ mkdir -p "$BIN_DIR"
 
 cat > "$BIN_DIR/meetingscribe" <<EOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/python" "$REPO_DIR/cli.py" "\$@"
+VENV_DIR="\$HOME/.meetingscribe/venv"
+REPO_DIR="$REPO_DIR"
+exec "\$VENV_DIR/bin/python" "\$REPO_DIR/cli.py" "\$@"
 EOF
 chmod +x "$BIN_DIR/meetingscribe"
 
 cat > "$BIN_DIR/meetingscribe-tray" <<EOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/python" "$REPO_DIR/tray.py" "\$@"
+VENV_DIR="\$HOME/.meetingscribe/venv"
+REPO_DIR="$REPO_DIR"
+exec "\$VENV_DIR/bin/python" "\$REPO_DIR/tray.py" "\$@"
 EOF
 chmod +x "$BIN_DIR/meetingscribe-tray"
 
