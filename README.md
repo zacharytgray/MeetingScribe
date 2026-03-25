@@ -69,7 +69,30 @@ Summarizer  —  Ollama (local) / Claude / OpenAI / Gemini / OpenRouter
 
 ## Installation
 
-### macOS (Quick Start)
+### Recommended Flow
+
+Use the platform installer script first. It handles the managed venv, Python dependencies, launcher scripts, and platform-specific audio prerequisites. Then run `meetingscribe setup` to configure the app.
+
+```bash
+git clone https://github.com/zacharytgray/MeetingScribe
+cd MeetingScribe
+
+# macOS
+bash scripts/install_mac.sh
+
+# Linux
+# bash scripts/install_linux.sh
+
+meetingscribe setup
+```
+
+Both installer scripts create `meetingscribe` and `meetingscribe-tray` launchers in `~/.local/bin`.
+Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and if `~/.local/bin` is not already on `PATH`, the installer adds it to your shell startup file automatically.
+`meetingscribe ...` is the primary CLI interface and has the same behavior as running `python cli.py ...` from the project root; the wrapper just dispatches to the same code with the managed venv.
+
+`meetingscribe setup` does not install dependencies, create the venv, install launchers, or set up OS-level audio requirements. It only configures MeetingScribe after installation is complete.
+
+### Manual macOS Install
 
 ```bash
 # 1. Clone the repo
@@ -82,7 +105,7 @@ source .venv/bin/activate
 pip install torch          # macOS: PyTorch installs directly from PyPI
 pip install -e .
 
-# 3. Configure
+# 3. Configure after installation
 meetingscribe setup
 ```
 
@@ -112,7 +135,7 @@ brew install blackhole-2ch
 3. Check both **BlackHole 2ch** and your speakers
 4. Set this Multi-Output Device as your system output in System Settings → Sound
 
-### Linux (Quick Start)
+### Manual Linux Install
 
 ```bash
 # Install system dependencies (Ubuntu/Debian)
@@ -125,19 +148,9 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
 
+# Configure after installation
 meetingscribe setup
 ```
-
-### Or use the install script
-
-```bash
-bash scripts/install_mac.sh    # macOS
-bash scripts/install_linux.sh  # Linux
-```
-
-Both installer scripts create `meetingscribe` and `meetingscribe-tray` launchers in `~/.local/bin`.
-Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and if `~/.local/bin` is not already on `PATH`, the installer adds it to your shell startup file automatically.
-`meetingscribe ...` is the primary CLI interface and has the same behavior as running `python cli.py ...` from the project root; the wrapper just dispatches to the same code with the managed venv.
 
 ---
 
