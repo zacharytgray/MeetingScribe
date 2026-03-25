@@ -38,8 +38,9 @@ meetingscribe/
 │   └── session.py                   ← MeetingSession: orchestrates dual streams + echo dedup + summarizer;
 │                                       _make_loopback_recorder() factory
 └── scripts/
-    ├── install_mac.sh               ← macOS installer (builds audiotee from source on macOS 14.2+)
-    └── install_linux.sh             ← Linux installer
+    ├── install_mac.sh               ← macOS installer (builds audiotee from source on macOS 14.2+,
+    │                                   creates ~/.local/bin launchers that resolve the venv via $HOME)
+    └── install_linux.sh             ← Linux installer (creates the same $HOME-based launchers)
 ```
 
 ---
