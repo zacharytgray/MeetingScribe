@@ -41,6 +41,11 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     (cd "$AUDIOTEE_TMP/audiotee" && swift build -c release -Xswiftc -suppress-warnings 2>&1 | grep -E "error:|Build complete")
     cp "$AUDIOTEE_TMP/audiotee/.build/release/audiotee" "$AUDIOTEE_BIN"
     chmod +x "$AUDIOTEE_BIN"
+    # Ad-hoc sign so macOS (especially Tahoe/16+) can anchor a TCC privacy entry
+    # to audiotee directly, rather than relying on the terminal's permission.
+    codesign --sign - --force "$AUDIOTEE_BIN" 2>/dev/null && \
+      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions." || \
+      echo "[!] codesign failed (non-fatal). Audio capture may need manual permission on macOS 16+."
     rm -rf "$AUDIOTEE_TMP"
     echo "[✓] audiotee built and installed to $AUDIOTEE_BIN"
     echo

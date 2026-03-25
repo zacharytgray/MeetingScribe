@@ -140,13 +140,42 @@ class Transcriber:
 
                 # torchaudio >= 2.1 removed AudioMetaData from the top-level
                 # namespace; pyannote.audio still references it there.
+                # Try several known module paths across torchaudio versions; fall
+                # back to a compatible namedtuple if nothing is importable.
                 import torchaudio as _ta
                 if not hasattr(_ta, "AudioMetaData"):
-                    try:
-                        from torchaudio.backend.common import AudioMetaData as _AMD
-                        _ta.AudioMetaData = _AMD
-                    except ImportError:
-                        pass
+                    _amd_set = False
+                    for _mod_path in (
+                        "torchaudio.backend.common",
+                        "torchaudio._backend.common",
+                        "torchaudio.backend.soundfile_backend",
+                    ):
+                        try:
+                            import importlib as _il
+                            _mod = _il.import_module(_mod_path)
+                            if hasattr(_mod, "AudioMetaData"):
+                                _ta.AudioMetaData = _mod.AudioMetaData
+                                _amd_set = True
+                                break
+                        except (ImportError, AttributeError):
+                            continue
+                    if not _amd_set:
+                        from collections import namedtuple as _nt
+                        _ta.AudioMetaData = _nt(
+                            "AudioMetaData",
+                            ["sample_rate", "num_frames", "num_channels",
+                             "bits_per_sample", "encoding"],
+                        )
+
+                # PyTorch >= 2.6 defaults torch.load to weights_only=True and
+                # requires all globals to be explicitly allowlisted.
+                # TorchVersion is used in pyannote model checkpoints.
+                try:
+                    import torch as _torch
+                    import torch.torch_version as _tv_mod
+                    _torch.serialization.add_safe_globals([_tv_mod.TorchVersion])
+                except (AttributeError, ImportError):
+                    pass
 
                 from pyannote.audio import Pipeline, Inference
 

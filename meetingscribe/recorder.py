@@ -201,7 +201,7 @@ class AudioTeeRecorder:
         self._process = subprocess.Popen(
             ["audiotee", "--sample-rate", "16000"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=None,  # inherit parent stderr so TCC/startup messages are visible
         )
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="audiotee-reader"

@@ -552,7 +552,26 @@ def _build_audiotee() -> bool:
                 return False
 
         subprocess.run(["chmod", "+x", dest], capture_output=True)
+
+        # Ad-hoc code-sign audiotee so macOS can anchor a TCC (privacy) entry to it.
+        # Without a signing identity, macOS 15+ (Sequoia) relies on the terminal's
+        # permission. macOS 16 (Tahoe) tightened this: an unsigned subprocess may
+        # create the CoreAudio Tap successfully (status 0) yet receive only silence
+        # because macOS has no stable identity to grant the permission to.
+        # "--sign -" = ad-hoc self-signed; free, no Apple Developer account needed.
+        sign_result = subprocess.run(
+            ["codesign", "--sign", "-", "--force", dest],
+            capture_output=True, text=True,
+        )
+        if sign_result.returncode == 0:
+            print(c(GREEN, "  ✓ audiotee signed (ad-hoc) for macOS privacy permissions."))
+        else:
+            print(c(YELLOW, "  [!] codesign failed (non-fatal); audio may not work on macOS 16+:"))
+            print(c(YELLOW, f"      {sign_result.stderr.strip()}"))
+
         print(c(GREEN, "  ✓ audiotee installed. Driver-free audio capture is now active."))
+        print(c(CYAN, "  On first recording macOS will prompt for System Audio Recording"))
+        print(c(CYAN, "  permission — grant it once and it will be remembered."))
         return True
 
     except Exception as e:
