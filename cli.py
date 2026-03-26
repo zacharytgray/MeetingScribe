@@ -514,7 +514,10 @@ def _build_audiotee() -> bool:
 
     tmpdir = tempfile.mkdtemp(prefix="meetingscribe_audiotee_")
     clone_dir = os.path.join(tmpdir, "audiotee")
-    dest = "/usr/local/bin/audiotee"
+    # Install to ~/.local/bin alongside the meetingscribe launchers — no sudo needed.
+    bin_dir = os.path.join(os.path.expanduser("~"), ".local", "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    dest = os.path.join(bin_dir, "audiotee")
 
     try:
         print(c(YELLOW, "  [1/3] Cloning audiotee from GitHub…"))
@@ -563,13 +566,9 @@ def _build_audiotee() -> bool:
         print(c(YELLOW, f"  [3/3] Installing to {dest}…"))
         result = subprocess.run(["cp", binary, dest], capture_output=True, text=True)
         if result.returncode != 0:
-            # /usr/local/bin may need sudo on some Macs
-            print(c(YELLOW, "      cp failed — trying with sudo (you may be prompted for your password):"))
-            result = subprocess.run(["sudo", "cp", binary, dest])
-            if result.returncode != 0:
-                print(c(RED, f"  Install failed. Copy it manually:"))
-                print(c(RED, f"      sudo cp {binary} {dest}"))
-                return False
+            print(c(RED, f"  Install failed. Copy it manually:"))
+            print(c(RED, f"      cp {binary} {dest}"))
+            return False
 
         subprocess.run(["chmod", "+x", dest], capture_output=True)
 

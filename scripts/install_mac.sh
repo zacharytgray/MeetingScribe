@@ -26,7 +26,9 @@ MACOS_MAJOR=$(sw_vers -productVersion | cut -d. -f1)
 
 if [ "$MACOS_MAJOR" -ge 14 ]; then
   # macOS 14 Sonoma+ — use audiotee (CoreAudio Taps, no virtual driver needed)
-  AUDIOTEE_BIN="/usr/local/bin/audiotee"
+  # Install to ~/.local/bin (same dir as meetingscribe launchers) — no sudo needed.
+  mkdir -p "$BIN_DIR"
+  AUDIOTEE_BIN="$BIN_DIR/audiotee"
   if command -v audiotee &>/dev/null; then
     echo "[✓] audiotee already installed."
     # macOS 16 (Tahoe) requires the binary to be code-signed so macOS can
