@@ -560,6 +560,15 @@ class AudioTeeRecorder:
             self.chunk_queue.put((None, duration))
             return
 
+        # Normalize loopback audio to a consistent peak level.  System audio
+        # captured via audiotee can be very quiet depending on the Mac's volume
+        # setting, causing Whisper's Silero VAD to reject speech as silence.
+        # Peak-normalising to 0.9 ensures VAD and Whisper see a strong signal
+        # regardless of the system mixer level.
+        peak = float(np.abs(audio).max())
+        if peak > SILENCE_THRESHOLD:
+            audio = audio * (0.9 / peak)
+
         path = self._tmpdir / f"chunk_{self._chunk_index:04d}.wav"
         self._chunk_index += 1
         sf.write(str(path), audio, SAMPLE_RATE)
