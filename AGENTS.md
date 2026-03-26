@@ -126,12 +126,38 @@ save_summary() [summarizer.py]
     - Handles filename collisions with _2, _3 suffix
 ```
 
-### AudioTeeRecorder internals
+### AudioTeeRecorder internals (FIFO architecture)
 
-- Spawns `audiotee --sample-rate 16000` as a subprocess; stdout is raw PCM
+On macOS 16 (Tahoe), exclusive CoreAudio Process Taps have a one-shot TCC permission behavior: audio flows only on the first `audiotee` invocation after the user grants System Audio Recording permission; subsequent invocations produce silence. To avoid this, audiotee runs as a **detached background process** that persists across Python process lifetimes.
+
+**State files** (in `~/.meetingscribe/`):
+- `audiotee.fifo` — named pipe; audiotee writes raw PCM here
+- `audiotee.pid` — PID of the detached audiotee process
+- `drain.pid` — PID of the drain subprocess
+
+**Data flow:**
+```
+Between sessions:  audiotee --[PCM]--> FIFO --[reads+discards]--> drain
+During recording:  audiotee --[PCM]--> FIFO --[reads]--> AudioTeeRecorder._read_loop()
+```
+
+**Bootstrap** (`_bootstrap_audiotee()` in `recorder.py`):
+1. Creates the FIFO via `os.mkfifo()`
+2. Opens FIFO with `O_RDWR` (POSIX trick to avoid blocking on open)
+3. Spawns audiotee with `stdout=fd, start_new_session=True` (detached from Python)
+4. Spawns a drain subprocess that reads and discards from the FIFO
+5. Writes PIDs to files for cross-process coordination
+
+**Session transitions** (FIFO always has ≥1 reader to prevent SIGPIPE):
+- **Start:** open FIFO `O_RDONLY` → kill drain → recorder is sole reader
+- **Stop:** start new drain → close recorder's fd → drain is sole reader
+
+**Cleanup:** `meetingscribe cleanup` kills both processes and removes state files.
+
 - PCM format: 16-bit signed integer, little-endian, mono, 16 kHz (`dtype="<i2"`)
 - Conversion: `np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0`
 - Background thread reads 6400-byte chunks (200 ms), accumulates into `chunk_seconds`-length buffers
+- Byte-alignment guard: leftover odd bytes are carried to the next read
 - Silent chunks (mean amplitude < `SILENCE_THRESHOLD`) are discarded before WAV write (same logic as `AudioRecorder`)
 - On first run, macOS shows a one-time System Audio Recording permission prompt (purple Control Center indicator). If denied, audio is silent — the silence detection path handles this gracefully with a warning printed after the first chunk.
 
@@ -295,6 +321,7 @@ meetingscribe start --no-diarization
 meetingscribe devices            # List available audio input devices
 meetingscribe config             # Show current configuration
 meetingscribe test-audio -d 6 -t 5 -s   # Record 5s from device 6, report amplitude, save WAV
+meetingscribe cleanup            # Stop persistent audiotee + drain, remove state files
 ```
 
 **During a session (type + Enter):**
@@ -365,6 +392,7 @@ meetingscribe setup
 meetingscribe start
 meetingscribe devices
 meetingscribe test-audio -d 6 -t 5
+meetingscribe cleanup         # kill persistent audiotee + drain
 meetingscribe-tray
 
 # Development from project root (without install)
@@ -372,6 +400,7 @@ python cli.py setup
 python cli.py start
 python cli.py devices
 python cli.py test-audio -d 6 -t 5
+python cli.py cleanup
 python tray.py
 
 # Editable install

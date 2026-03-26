@@ -410,6 +410,13 @@ def cmd_test_audio(args: argparse.Namespace) -> None:
             subprocess.Popen(["open", tmp])
 
 
+def cmd_cleanup(_args: argparse.Namespace) -> None:
+    from meetingscribe.recorder import cleanup_audiotee
+    print(c(BOLD, "\nCleaning up persistent audiotee processes…\n"))
+    cleanup_audiotee()
+    print()
+
+
 def cmd_start(args: argparse.Namespace) -> None:
     from meetingscribe.config import load_config
     from meetingscribe.session import MeetingSession
@@ -617,6 +624,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_test.add_argument("-t", "--duration", type=float, default=5.0, help="Seconds to record (default: 5)")
     p_test.add_argument("-s", "--save", action="store_true", help="Save WAV and open it for listening")
 
+    # cleanup
+    sub.add_parser("cleanup", help="Stop persistent audiotee process and remove state files")
+
     return parser
 
 
@@ -634,6 +644,8 @@ def main() -> None:
         cmd_start(args)
     elif args.command == "test-audio":
         cmd_test_audio(args)
+    elif args.command == "cleanup":
+        cmd_cleanup(args)
     else:
         parser.print_help()
 
