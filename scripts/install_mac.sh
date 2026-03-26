@@ -29,6 +29,14 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
   AUDIOTEE_BIN="/usr/local/bin/audiotee"
   if command -v audiotee &>/dev/null; then
     echo "[✓] audiotee already installed."
+    # macOS 16 (Tahoe) requires the binary to be code-signed so macOS can
+    # anchor a TCC privacy entry to it. Without this, audiotee may run without
+    # errors but receive only silence. Re-sign on every install to cover
+    # manually-installed binaries and macOS upgrades.
+    AUDIOTEE_PATH="$(command -v audiotee)"
+    codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null && \
+      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions." || \
+      echo "[!] codesign failed. Audio capture may need manual permission on macOS 16+."
   elif ! command -v swift &>/dev/null; then
     echo "[!] Swift not found. Install Xcode Command Line Tools then re-run:"
     echo "    xcode-select --install"

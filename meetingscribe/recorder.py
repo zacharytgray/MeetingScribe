@@ -241,11 +241,36 @@ class AudioTeeRecorder:
         buffer: list[np.ndarray] = []
         buffer_samples = 0
 
+        # Silence detection: warn if the first 15 seconds of audio are all silent.
+        # On macOS 16 (Tahoe), an unsigned audiotee binary may receive only silence
+        # because macOS cannot anchor a TCC (System Audio Recording) permission to
+        # an unsigned subprocess. The fix is: codesign --sign - --force $(which audiotee)
+        _SILENCE_WARN_SAMPLES = SAMPLE_RATE * 15
+        _total_samples = 0
+        _non_silent_samples = 0
+        _silence_warned = False
+
         while not self._stop_event.is_set():
             raw = self._process.stdout.read(BYTES_PER_READ)
             if not raw:
                 break  # process exited
             audio = np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0
+
+            if not _silence_warned:
+                _total_samples += len(audio)
+                if np.abs(audio).mean() >= SILENCE_THRESHOLD:
+                    _non_silent_samples += len(audio)
+                if _total_samples >= _SILENCE_WARN_SAMPLES and _non_silent_samples == 0:
+                    _silence_warned = True
+                    print(
+                        "\n[audiotee] WARNING: 15 seconds of silence — no system audio captured.\n"
+                        "  On macOS 16 (Tahoe), audiotee must be code-signed to receive audio.\n"
+                        "  Fix: run  codesign --sign - --force $(which audiotee)\n"
+                        "       then quit MeetingScribe and start a new session.\n"
+                        "  A System Audio Recording permission prompt may appear on the next run.\n"
+                        "  Or re-run the installer:  bash scripts/install_mac.sh\n"
+                    )
+
             buffer.append(audio)
             buffer_samples += len(audio)
 
