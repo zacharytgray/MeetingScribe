@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import atexit
 import queue
+import select
 import subprocess
 import tempfile
 import threading
@@ -26,6 +28,88 @@ _LOOPBACK_KEYWORDS = [
     "soundflower",
     "stereo mix",
 ]
+
+
+# ---------------------------------------------------------------------------
+# audiotee persistent-process singleton
+# ---------------------------------------------------------------------------
+# On macOS 16 (Tahoe), CoreAudio Process Taps exhibit a one-shot behavior:
+# audio is captured only on the first run after TCC permission is granted.
+# Each subsequent audiotee invocation starts a new tap, which macOS silences.
+#
+# Fix: keep audiotee alive as a module-level singleton across recording
+# sessions. The tap is created once, stays open, and sessions share the same
+# running process. A drain thread reads and discards audio between sessions
+# to prevent the pipe buffer from filling up (which would block audiotee's
+# CoreAudio callback and stall audio playback).
+
+_audiotee_proc: Optional[subprocess.Popen] = None
+_audiotee_lock = threading.Lock()
+_drain_thread: Optional[threading.Thread] = None
+_drain_stop = threading.Event()
+
+
+def _ensure_audiotee() -> subprocess.Popen:
+    """Return the running audiotee process, starting it if needed."""
+    global _audiotee_proc
+    with _audiotee_lock:
+        if _audiotee_proc is None or _audiotee_proc.poll() is not None:
+            _audiotee_proc = subprocess.Popen(
+                ["audiotee", "--sample-rate", "16000"],
+                stdout=subprocess.PIPE,
+                stderr=None,
+            )
+            atexit.register(_shutdown_audiotee)
+        return _audiotee_proc
+
+
+def _shutdown_audiotee() -> None:
+    """Terminate audiotee when the Python process exits."""
+    global _audiotee_proc
+    _stop_drain()
+    if _audiotee_proc is not None and _audiotee_proc.poll() is None:
+        _audiotee_proc.terminate()
+        try:
+            _audiotee_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _audiotee_proc.kill()
+    _audiotee_proc = None
+
+
+def _start_drain(proc: subprocess.Popen) -> None:
+    """Start a background thread that reads and discards audiotee output.
+
+    This keeps the pipe buffer from filling up between sessions, which would
+    otherwise block audiotee's CoreAudio callback and stall audio playback.
+    """
+    global _drain_thread
+    _stop_drain()
+    _drain_stop.clear()
+    _drain_thread = threading.Thread(
+        target=_drain_loop, args=(proc,), daemon=True, name="audiotee-drain"
+    )
+    _drain_thread.start()
+
+
+def _stop_drain() -> None:
+    global _drain_thread
+    _drain_stop.set()
+    if _drain_thread is not None and _drain_thread.is_alive():
+        _drain_thread.join(timeout=2)
+    _drain_thread = None
+
+
+def _drain_loop(proc: subprocess.Popen) -> None:
+    assert proc.stdout is not None
+    while not _drain_stop.is_set():
+        try:
+            ready = select.select([proc.stdout], [], [], 0.1)
+            if ready[0]:
+                data = proc.stdout.read(6400)
+                if not data:
+                    break  # process exited
+        except (OSError, ValueError):
+            break
 
 
 def list_devices() -> list[dict]:
@@ -197,12 +281,11 @@ class AudioTeeRecorder:
             return
         self._started = True
         self._stop_event.clear()
-        # --sample-rate 16000: outputs 16-bit signed int mono at 16kHz (Whisper native)
-        self._process = subprocess.Popen(
-            ["audiotee", "--sample-rate", "16000"],
-            stdout=subprocess.PIPE,
-            stderr=None,  # inherit parent stderr so TCC/startup messages are visible
-        )
+        # Get or reuse the persistent audiotee process. Keeping audiotee alive
+        # across sessions avoids the macOS 16 one-shot permission issue where
+        # each new process invocation receives only silence after the first run.
+        _stop_drain()
+        self._process = _ensure_audiotee()
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="audiotee-reader"
         )
@@ -212,14 +295,13 @@ class AudioTeeRecorder:
         if not self._started:
             return
         self._stop_event.set()
-        if self._process:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
         if self._thread:
             self._thread.join(timeout=10)
+        # Keep audiotee alive — terminating it would destroy the CoreAudio Tap
+        # and trigger the macOS 16 one-shot issue on the next session.
+        # Start a drain thread to prevent the pipe buffer from filling up.
+        if self._process is not None:
+            _start_drain(self._process)
         self._started = False
 
     def cleanup(self) -> None:
@@ -251,9 +333,18 @@ class AudioTeeRecorder:
         _silence_warned = False
 
         while not self._stop_event.is_set():
+            # Use select() with a short timeout so the loop can check
+            # _stop_event without blocking on read() indefinitely.
+            # (We don't terminate audiotee on stop, so the pipe stays open.)
+            try:
+                ready = select.select([self._process.stdout], [], [], 0.5)
+            except (OSError, ValueError):
+                break
+            if not ready[0]:
+                continue
             raw = self._process.stdout.read(BYTES_PER_READ)
             if not raw:
-                break  # process exited
+                break  # process exited unexpectedly
             audio = np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0
 
             if not _silence_warned:
