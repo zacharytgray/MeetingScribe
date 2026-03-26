@@ -528,12 +528,14 @@ class AudioTeeRecorder:
                 if _total_samples >= _SILENCE_WARN_SAMPLES and _non_silent_samples == 0:
                     _silence_warned = True
                     print(
-                        "\n[audiotee] WARNING: 15 seconds of silence — no system audio captured.\n"
-                        "  On macOS 16 (Tahoe), audiotee must be code-signed to receive audio.\n"
-                        "  Fix: run  codesign --sign - --force $(which audiotee)\n"
-                        "       then run  meetingscribe cleanup  and start a new session.\n"
-                        "  A System Audio Recording permission prompt may appear on the next run.\n"
-                        "  Or re-run the installer:  bash scripts/install_mac.sh\n"
+                        "\n[audiotee] No system audio detected in the first 15 seconds.\n"
+                        "  This is normal if no audio is playing through your speakers yet.\n"
+                        "  The loopback stream will start capturing once system audio begins.\n"
+                        "  Your microphone stream (if configured) is unaffected.\n"
+                        "\n"
+                        "  If you DO expect system audio and this persists, audiotee may\n"
+                        "  need to be re-signed:  codesign --sign - --force $(which audiotee)\n"
+                        "  Then run:  meetingscribe cleanup  and start a new session.\n"
                     )
 
             buffer.append(audio)
