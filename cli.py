@@ -224,11 +224,15 @@ def cmd_setup(_args: argparse.Namespace) -> None:
         _audiotee_ok = audiotee_available()
         print(c(BOLD, "\n--- Audio Capture Backend ---"))
         if _mac_ver >= (14, 2):
+            import shutil as _shutil
+            _swift_ok = _shutil.which("swift") is not None
             if _audiotee_ok:
                 print(c(GREEN, "  audiotee detected — driver-free capture is available (recommended)."))
+                if _swift_ok:
+                    ans = input("  Rebuild audiotee from source? (fixes macOS SDK incompatibilities) [y/N]: ").strip().lower()
+                    if ans in ("y", "yes"):
+                        _audiotee_ok = _build_audiotee()
             else:
-                import shutil as _shutil
-                _swift_ok = _shutil.which("swift") is not None
                 print(f"  macOS {_mac_ver[0]}.{_mac_ver[1]} supports driver-free audio capture via audiotee")
                 print(f"  (no BlackHole, no Audio MIDI Setup, volume works normally).")
                 print()
