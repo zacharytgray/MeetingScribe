@@ -527,6 +527,22 @@ def _build_audiotee() -> bool:
             print(c(RED, f"  git clone failed:\n    {result.stderr.strip()}"))
             return False
 
+        # macOS 16 (Tahoe): exclusive=true causes a one-shot capture bug — audio is
+        # only received on the first run after permission is granted, then silenced.
+        # Patch to non-exclusive mode before building.
+        tap_src = os.path.join(clone_dir, "Sources", "AudioTeeCore", "Core", "AudioTapManager.swift")
+        if os.path.isfile(tap_src):
+            with open(tap_src) as _f:
+                _src = _f.read()
+            _patched = _src.replace(
+                "description.isExclusive = config.isExclusive",
+                "description.isExclusive = false",
+            )
+            if _patched != _src:
+                with open(tap_src, "w") as _f:
+                    _f.write(_patched)
+                print(c(GREEN, "  Patched audiotee for macOS 16 non-exclusive tap mode."))
+
         print(c(YELLOW, "  [2/3] Building with Swift (this takes ~60–90s)…"))
         result = subprocess.run(
             ["swift", "build", "-c", "release", "-Xswiftc", "-suppress-warnings"],
