@@ -34,9 +34,13 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     # errors but receive only silence. Re-sign on every install to cover
     # manually-installed binaries and macOS upgrades.
     AUDIOTEE_PATH="$(command -v audiotee)"
-    codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null && \
-      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions." || \
-      echo "[!] codesign failed. Audio capture may need manual permission on macOS 16+."
+    if codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null; then
+      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions."
+    elif sudo codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null; then
+      echo "[✓] audiotee signed (ad-hoc, via sudo) for macOS privacy permissions."
+    else
+      echo "[!] codesign failed. Run manually: sudo codesign --sign - --force \$(which audiotee)"
+    fi
   elif ! command -v swift &>/dev/null; then
     echo "[!] Swift not found. Install Xcode Command Line Tools then re-run:"
     echo "    xcode-select --install"
@@ -51,9 +55,13 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     chmod +x "$AUDIOTEE_BIN"
     # Ad-hoc sign so macOS (especially Tahoe/16+) can anchor a TCC privacy entry
     # to audiotee directly, rather than relying on the terminal's permission.
-    codesign --sign - --force "$AUDIOTEE_BIN" 2>/dev/null && \
-      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions." || \
+    if codesign --sign - --force "$AUDIOTEE_BIN" 2>/dev/null; then
+      echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions."
+    elif sudo codesign --sign - --force "$AUDIOTEE_BIN" 2>/dev/null; then
+      echo "[✓] audiotee signed (ad-hoc, via sudo) for macOS privacy permissions."
+    else
       echo "[!] codesign failed (non-fatal). Audio capture may need manual permission on macOS 16+."
+    fi
     rm -rf "$AUDIOTEE_TMP"
     echo "[✓] audiotee built and installed to $AUDIOTEE_BIN"
     echo
