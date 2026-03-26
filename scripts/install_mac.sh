@@ -38,14 +38,14 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     # can invalidate the existing TCC entry, forcing the user to re-grant
     # System Audio Recording permission from scratch.
     AUDIOTEE_PATH="$(command -v audiotee)"
-    if codesign --verify --quiet "$AUDIOTEE_PATH" 2>/dev/null; then
-      echo "[✓] audiotee is already signed — skipping re-sign to preserve TCC permission."
-    elif codesign --sign - "$AUDIOTEE_PATH" 2>/dev/null; then
+    # Always sign with --force. Ad-hoc re-signing the same binary content
+    # produces the same CDHash, so existing TCC entries remain valid.
+    if codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null; then
       echo "[✓] audiotee signed (ad-hoc) for macOS privacy permissions."
-    elif sudo codesign --sign - "$AUDIOTEE_PATH" 2>/dev/null; then
+    elif sudo codesign --sign - --force "$AUDIOTEE_PATH" 2>/dev/null; then
       echo "[✓] audiotee signed (ad-hoc, via sudo) for macOS privacy permissions."
     else
-      echo "[!] codesign failed. Run manually: sudo codesign --sign - \$(which audiotee)"
+      echo "[!] codesign failed. Run manually: codesign --sign - --force \$(which audiotee)"
     fi
   elif ! command -v swift &>/dev/null; then
     echo "[!] Swift not found. Install Xcode Command Line Tools then re-run:"
