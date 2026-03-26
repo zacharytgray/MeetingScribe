@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import difflib
+import re
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -208,8 +210,6 @@ class MeetingSession:
             segments = _remove_echo_segments(
                 segments,
                 user_name=self._config.user_name,
-                time_window=2.5,
-                similarity_threshold=0.7,
             )
 
         segments.sort(key=lambda s: s.start)
@@ -254,10 +254,23 @@ def _make_loopback_recorder(config: Config) -> "AudioRecorder | AudioTeeRecorder
     )
 
 
+# Strip punctuation before tokenizing so "ports," == "ports" and "5." == "5".
+_PUNCT_RE = re.compile(r"[^\w\s]")
+
+
+def _tokenize(text: str) -> set[str]:
+    """Lower-case, strip punctuation, return word set."""
+    return set(_PUNCT_RE.sub("", text.lower()).split())
+
+
 def _word_overlap(a: str, b: str) -> float:
-    """Fraction of the shorter segment's words that appear in the other."""
-    wa = set(a.lower().split())
-    wb = set(b.lower().split())
+    """Fraction of the shorter segment's words that appear in the other.
+
+    Punctuation is stripped before comparison so Whisper's trailing periods
+    and commas don't prevent matching otherwise identical words.
+    """
+    wa = _tokenize(a)
+    wb = _tokenize(b)
     if not wa or not wb:
         return 0.0
     return len(wa & wb) / min(len(wa), len(wb))
@@ -266,18 +279,33 @@ def _word_overlap(a: str, b: str) -> float:
 def _remove_echo_segments(
     segments: list[TranscriptSegment],
     user_name: str,
-    time_window: float = 2.5,
-    similarity_threshold: float = 0.7,
+    time_window: float = 8.0,
+    similarity_threshold: float = 0.65,
+    sequence_threshold: float = 0.50,
 ) -> list[TranscriptSegment]:
     """
     Drop mic segments that are acoustic echoes of loopback audio.
 
     When speakers are used (no headphones), the microphone picks up audio
     playing through the speakers, producing near-duplicate segments at the
-    same timestamp. We identify these by comparing every user-labeled segment
-    against every loopback segment: if they overlap in time (within time_window
-    seconds) and share >= similarity_threshold word overlap, the mic segment
-    is an echo and is removed.
+    same timestamp.  We identify echoes by comparing every user-labeled
+    segment against every loopback segment using two criteria:
+
+    1. **Temporal proximity** — the actual gap between segments must be ≤
+       time_window seconds.  The default 8 s covers timing drift that
+       accumulates between the two recording streams over several minutes:
+       the mic uses a 500 ms poll loop that can overshoot each 30 s chunk
+       by up to 500 ms, compounding to ~5 s drift after 10 chunks.  The
+       larger window ensures echoes are still detected late in a session.
+
+       (Previous versions used ``min(|start_a − start_b|, |end_a − end_b|)``
+       which is not the temporal gap between segments and produced
+       falsely-large values whenever segment lengths differed.)
+
+    2. **Text similarity** — either word-set overlap ≥ similarity_threshold
+       OR ``difflib.SequenceMatcher.ratio()`` ≥ sequence_threshold.  Using
+       both catches cases where Whisper transcribes the echo with different
+       punctuation, filler words, or minor word substitutions.
     """
     user_segs = {id(s): s for s in segments if s.speaker == user_name}
     other_segs = [s for s in segments if s.speaker != user_name]
@@ -285,17 +313,29 @@ def _remove_echo_segments(
     echo_ids: set[int] = set()
     for uid, user_seg in user_segs.items():
         for other_seg in other_segs:
-            # Check temporal proximity
-            latest_start = max(user_seg.start, other_seg.start)
-            earliest_end = min(user_seg.end, other_seg.end)
-            time_overlap = earliest_end - latest_start
-            time_gap = min(
-                abs(user_seg.start - other_seg.start),
-                abs(user_seg.end - other_seg.end),
+            # Actual temporal gap: 0 when segments overlap, positive otherwise.
+            gap = max(
+                0.0,
+                max(user_seg.start, other_seg.start) - min(user_seg.end, other_seg.end),
             )
-            if time_overlap > 0 or time_gap <= time_window:
-                if _word_overlap(user_seg.text, other_seg.text) >= similarity_threshold:
-                    echo_ids.add(uid)
-                    break
+            if gap > time_window:
+                continue
+
+            # Primary check: punctuation-stripped word-set overlap.
+            if _word_overlap(user_seg.text, other_seg.text) >= similarity_threshold:
+                echo_ids.add(uid)
+                break
+
+            # Fallback: character-level sequence ratio catches near-duplicates
+            # that share few *distinct* words but are textually very similar
+            # (e.g. Whisper insertions/deletions of filler words).
+            ratio = difflib.SequenceMatcher(
+                None,
+                user_seg.text.lower(),
+                other_seg.text.lower(),
+            ).ratio()
+            if ratio >= sequence_threshold:
+                echo_ids.add(uid)
+                break
 
     return [s for s in segments if id(s) not in echo_ids]
