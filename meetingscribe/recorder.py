@@ -112,6 +112,32 @@ def _drain_loop(proc: subprocess.Popen) -> None:
             break
 
 
+def _restart_audiotee(old_proc: subprocess.Popen) -> subprocess.Popen:
+    """Reset the AudioCapture TCC permission and start a fresh audiotee process.
+
+    On macOS 16 (Tahoe), exclusive CoreAudio Process Taps have a one-shot
+    permission behavior: audio flows only on the first audiotee invocation
+    after TCC permission is granted; subsequent invocations receive silence.
+    Resetting the AudioCapture TCC entry forces macOS to re-prompt, granting
+    access for the new process.
+    """
+    global _audiotee_proc
+    subprocess.run(["tccutil", "reset", "AudioCapture"], capture_output=True)
+    if old_proc.poll() is None:
+        old_proc.terminate()
+        try:
+            old_proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            old_proc.kill()
+    with _audiotee_lock:
+        _audiotee_proc = subprocess.Popen(
+            ["audiotee", "--sample-rate", "16000"],
+            stdout=subprocess.PIPE,
+            stderr=None,
+        )
+        return _audiotee_proc
+
+
 def list_devices() -> list[dict]:
     """Return a list of all sounddevice input devices."""
     devices = []

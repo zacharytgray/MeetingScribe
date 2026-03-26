@@ -56,16 +56,6 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     echo "[+] Building audiotee from source (driver-free audio capture for macOS 14.2+)…"
     AUDIOTEE_TMP=$(mktemp -d)
     git clone --depth 1 https://github.com/makeusabrew/audiotee.git "$AUDIOTEE_TMP/audiotee" 2>&1 | tail -1
-    # macOS 16 (Tahoe): exclusive=true taps have a one-shot permission behavior —
-    # audio flows only on the first audiotee invocation after TCC permission is
-    # granted; subsequent invocations receive silence. exclusive=false (non-
-    # destructive/observational tap) observes the audio stream without taking
-    # exclusive ownership and does not trigger the one-shot restriction.
-    TAP_SRC="$AUDIOTEE_TMP/audiotee/Sources/AudioTeeCore/Core/AudioTapManager.swift"
-    if [ -f "$TAP_SRC" ]; then
-      sed -i '' 's/description\.isExclusive = config\.isExclusive/description.isExclusive = false/' "$TAP_SRC"
-      echo "[+] Patched audiotee: non-exclusive tap mode (macOS 16 compatibility)."
-    fi
     (cd "$AUDIOTEE_TMP/audiotee" && swift build -c release -Xswiftc -suppress-warnings 2>&1 | grep -E "error:|Build complete")
     cp "$AUDIOTEE_TMP/audiotee/.build/release/audiotee" "$AUDIOTEE_BIN"
     chmod +x "$AUDIOTEE_BIN"
