@@ -504,9 +504,13 @@ def cmd_test_audiotee(args: argparse.Namespace) -> None:
         print(f"  Silence threshold: {SILENCE_THRESHOLD}\n")
 
         if peak < 0.0001:
+            import shutil as _shutil
+            _at_path = _shutil.which("audiotee") or "audiotee"
             print(c(RED, "  RESULT: Complete silence — audiotee is producing all-zero audio."))
             print("          audiotee needs Screen & System Audio Recording permission.")
-            print(f"          Run: {c(BOLD, 'meetingscribe fix-audio')} for instructions.")
+            print(f"          Add {c(CYAN, _at_path)} in:")
+            print("          System Settings > Privacy & Security > Screen & System Audio Recording")
+            print(f"          Or run: {c(BOLD, 'meetingscribe fix-audio')} for step-by-step instructions.")
         elif mean < SILENCE_THRESHOLD:
             print(c(YELLOW, "  RESULT: Very low signal — audio present but extremely quiet."))
         else:
@@ -535,8 +539,7 @@ def cmd_fix_audio(_args: argparse.Namespace) -> None:
     print("grant Screen & System Audio Recording permission manually:\n")
     print(f"  1. Open {c(BOLD, 'System Settings > Privacy & Security >')}")
     print(f"     {c(BOLD, 'Screen & System Audio Recording')}")
-    print(f"  2. Click {c(BOLD, '+')} and add your terminal app (Terminal, iTerm2, etc.)")
-    print(f"     — OR add audiotee directly: {c(CYAN, audiotee_path)}")
+    print(f"  2. Click {c(BOLD, '+')} and add audiotee: {c(CYAN, audiotee_path)}")
     print("  3. Make sure the toggle is ON")
     print(f"  4. Run {c(BOLD, 'meetingscribe test-audiotee')} to verify\n")
 
@@ -717,8 +720,10 @@ def _build_audiotee() -> bool:
             print(c(YELLOW, f"      {sign_result.stderr.strip()}"))
 
         print(c(GREEN, "  ✓ audiotee installed. Driver-free audio capture is now active."))
-        print(c(CYAN, "  IMPORTANT: You must add audiotee to Screen & System Audio Recording"))
-        print(c(CYAN, f"  in System Settings. Path: {dest}"))
+        print(c(CYAN, "  IMPORTANT: Add audiotee to Screen & System Audio Recording in System Settings:"))
+        print(c(CYAN, f"    System Settings > Privacy & Security > Screen & System Audio Recording"))
+        print(c(CYAN, f"    Click '+' and add: {dest}"))
+        print(c(CYAN, "  The setup wizard will guide you through this step."))
         return True
 
     except Exception as e:

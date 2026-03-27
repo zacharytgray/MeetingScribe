@@ -438,11 +438,11 @@ class AudioTeeRecorder:
     system output without a virtual driver — audio still plays through the
     user's speakers/headphones normally.
 
-    The audiotee process runs detached (``start_new_session=True``) and
-    survives Python exit.  This avoids the macOS 16 (Tahoe) one-shot TCC
-    permission issue where each new process invocation receives only silence
-    after the first.  Between recording sessions a lightweight drain process
-    reads and discards from the FIFO so audiotee never blocks.
+    The audiotee process runs detached (``preexec_fn=os.setpgrp``) — new
+    process group so it survives Python exit and ignores Ctrl+C, but same
+    terminal session so it inherits the terminal app's TCC permission for
+    Screen & System Audio Recording.  Between recording sessions a lightweight
+    drain process reads and discards from the FIFO so audiotee never blocks.
 
     Implements the same public interface as AudioRecorder so it can be used
     as a drop-in replacement for the loopback stream.
