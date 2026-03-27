@@ -59,7 +59,7 @@ Summarizer  —  Ollama (local) / Claude / OpenAI / Gemini / OpenRouter
 
 ## Requirements
 
-- Python 3.10–3.12
+- Python 3.10–3.13
 - macOS 12+ or Linux (Ubuntu 20.04+, Fedora, Arch)
 - **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — no virtual driver, no Audio MIDI Setup, volume works normally ✨
 - **macOS ≤13**: [BlackHole](https://existential.audio/blackhole/) virtual audio driver (see setup steps below)
@@ -127,7 +127,7 @@ cd audiotee && swift build -c release
 cp .build/release/audiotee /usr/local/bin/
 ```
 
-On first recording, macOS prompts for System Audio Recording permission — grant it once.
+audiotee requires a one-time manual permission grant in **System Settings → Privacy & Security → Screen & System Audio Recording** — add `/usr/local/bin/audiotee` and toggle it ON. `meetingscribe setup` and `scripts/install_mac.sh` both walk you through this step. Run `meetingscribe test-audiotee` to verify, or `meetingscribe fix-audio` if audio is silent.
 
 **macOS 13 and earlier — BlackHole setup:**
 
@@ -277,8 +277,19 @@ meetingscribe start --no-diarization   # skip speaker identification
 # List available audio input devices
 meetingscribe devices
 
-# Test audio capture from a device (run while audio is playing)
-meetingscribe test-audio -d 6 -t 5 -s
+# Test audio capture from a sounddevice/BlackHole device (run while audio is playing)
+meetingscribe test-audio -d 6 -t 5     # record 5s from device 6, report amplitude
+meetingscribe test-audio -d 6 -t 5 -s  # same, and save the WAV for listening
+
+# Test the audiotee FIFO pipeline directly (macOS 14.2+ / audiotee backend only)
+meetingscribe test-audiotee            # read 5s from FIFO, report signal levels
+meetingscribe test-audiotee -t 10      # read for 10s
+
+# Fix silent audio capture — restarts audiotee and shows permission instructions
+meetingscribe fix-audio
+
+# Stop the persistent audiotee process and remove state files
+meetingscribe cleanup
 
 # Show current configuration
 meetingscribe config
@@ -412,8 +423,8 @@ Both streams are transcribed independently using faster-whisper, then merged and
 If you use speakers (not headphones), your microphone will pick up the audio coming out of your speakers. This creates near-duplicate segments in the transcript — the same sentence appearing once labeled as a remote speaker and again labeled as you. MeetingScribe automatically removes these acoustic echoes before saving.
 
 The echo filter compares every mic segment against every loopback segment. If a mic segment:
-1. Overlaps in time (or starts within 2.5 seconds of) a loopback segment, **and**
-2. Shares ≥ 70% word overlap with that loopback segment
+1. Overlaps in time (or starts within 8 seconds of) a loopback segment, **and**
+2. Shares ≥ 65% word overlap with that loopback segment (or ≥ 50% character-level sequence similarity as a fallback)
 
 …it is identified as an echo and dropped from the transcript.
 
