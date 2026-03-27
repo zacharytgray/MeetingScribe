@@ -126,7 +126,7 @@ if [ -d "$VENV_DIR" ]; then
   VENV_MINOR=${VENV_PY_VER##*.}
   VENV_MAJOR=${VENV_PY_VER%%.*}
   if [ "$VENV_MAJOR" -ne 3 ] || [ "$VENV_MINOR" -lt 10 ] || [ "$VENV_MINOR" -gt 13 ]; then
-    echo "[!] Existing venv uses Python $VENV_PY_VER (incompatible). Removing and recreating with $PYTHON_VERSION…"
+    echo "[!] Existing venv uses Python $VENV_PY_VER (incompatible). Removing and recreating with ${PYTHON_VERSION}..."
     rm -rf "$VENV_DIR"
     "$PYTHON_BIN" -m venv "$VENV_DIR"
     echo "[✓] Venv recreated at $VENV_DIR."
