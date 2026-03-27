@@ -40,21 +40,47 @@ echo "    in your config after running: meetingscribe devices"
 echo
 
 # ---------------------------------------------------------------------------
-# 3. Create Python venv
+# 3. Create Python venv  (requires 3.10–3.13; PyTorch has no 3.14+ wheels yet)
 # ---------------------------------------------------------------------------
-if ! command -v python3 &>/dev/null; then
-  echo "[!] python3 not found. Install Python 3.10+ and re-run."
+PYTHON_BIN=""
+for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+  if command -v "$candidate" &>/dev/null; then
+    ver=$("$candidate" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null)
+    major=${ver%%.*}; minor=${ver##*.}
+    if [ "$major" -eq 3 ] && [ "$minor" -ge 10 ] && [ "$minor" -le 13 ]; then
+      PYTHON_BIN="$candidate"
+      PYTHON_VERSION="$ver"
+      break
+    fi
+  fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
+  echo "[!] No compatible Python found (need 3.10–3.13; PyTorch has no wheels for 3.14+ yet)."
+  echo "    Install Python 3.12 with your package manager, e.g.:"
+  echo "      sudo apt install python3.12 python3.12-venv"
+  echo "    Then re-run this script."
   exit 1
 fi
 
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-echo "[+] Using Python $PYTHON_VERSION"
+echo "[+] Using Python $PYTHON_VERSION ($PYTHON_BIN)"
 
-if [ ! -d "$VENV_DIR" ]; then
-  echo "[+] Creating venv at ${VENV_DIR}..."
-  python3 -m venv "$VENV_DIR"
+if [ -d "$VENV_DIR" ]; then
+  VENV_PY_VER=$("$VENV_DIR/bin/python" -c \
+    "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+  VENV_MINOR=${VENV_PY_VER##*.}
+  VENV_MAJOR=${VENV_PY_VER%%.*}
+  if [ "$VENV_MAJOR" -ne 3 ] || [ "$VENV_MINOR" -lt 10 ] || [ "$VENV_MINOR" -gt 13 ]; then
+    echo "[!] Existing venv uses Python $VENV_PY_VER (incompatible). Removing and recreating with $PYTHON_VERSION…"
+    rm -rf "$VENV_DIR"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
+    echo "[✓] Venv recreated at $VENV_DIR."
+  else
+    echo "[✓] Venv already exists at $VENV_DIR (Python $VENV_PY_VER)."
+  fi
 else
-  echo "[✓] Venv already exists at $VENV_DIR."
+  echo "[+] Creating venv at ${VENV_DIR}..."
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
 # ---------------------------------------------------------------------------
