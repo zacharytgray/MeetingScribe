@@ -177,6 +177,7 @@ class TrayApp:
                 self._loading = False
             self._icon.icon = _draw_mic_icon(True)
             self._icon.title = "MeetingScribe — recording"
+            self._icon.update_menu()
             self._icon.notify("MeetingScribe", "Recording started.")
         except Exception as e:
             with self._lock:
@@ -184,6 +185,7 @@ class TrayApp:
             self._icon.notify("MeetingScribe", f"Failed to start: {e}")
             self._icon.icon = _draw_mic_icon(False)
             self._icon.title = "MeetingScribe"
+            self._icon.update_menu()
 
     def _on_stop(self, icon, menu_item) -> None:
         with self._lock:
@@ -193,6 +195,7 @@ class TrayApp:
 
         self._icon.icon = _draw_mic_icon(False)
         self._icon.title = "MeetingScribe — summarizing…"
+        self._icon.update_menu()
         threading.Thread(target=self._stop_and_save, daemon=True).start()
 
     def _stop_and_save(self) -> None:
@@ -207,6 +210,7 @@ class TrayApp:
             self._icon.notify("MeetingScribe", f"Error saving: {e}")
         finally:
             self._icon.title = "MeetingScribe"
+            self._icon.update_menu()
 
     def _on_show_transcript(self, icon, menu_item) -> None:
         transcript = self._session.get_live_transcript() if self._session else ""

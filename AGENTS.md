@@ -128,11 +128,15 @@ save_summary() [summarizer.py]
 
 ### AudioTeeRecorder internals (FIFO architecture)
 
-On macOS 16 (Tahoe), exclusive CoreAudio Process Taps have a one-shot TCC permission behavior: audio flows only on the first `audiotee` invocation after the user grants System Audio Recording permission; subsequent invocations produce silence. To avoid this, audiotee runs as a **detached background process** that persists across Python process lifetimes.
+audiotee runs as a **persistent background process** writing raw PCM to a named FIFO (`~/.meetingscribe/audiotee.fifo`). This avoids creating a new CoreAudio Process Tap for each recording session.
+
+**macOS permission requirement:** audiotee must be added to **System Settings > Privacy & Security > Screen & System Audio Recording** and toggled ON. Without this, audiotee produces all-zero PCM (complete silence). The installer and setup wizard guide the user through this. The `meetingscribe fix-audio` command provides troubleshooting instructions.
+
+**Process group vs session:** audiotee is spawned with `preexec_fn=os.setpgrp` — this creates a new **process group** (so Ctrl+C doesn't kill it, and it survives Python exit) while staying in the same **terminal session** (preserving TCC permission inheritance). Using `start_new_session=True` (`setsid`) would sever the TCC context, causing macOS to silently deny audio capture.
 
 **State files** (in `~/.meetingscribe/`):
 - `audiotee.fifo` — named pipe; audiotee writes raw PCM here
-- `audiotee.pid` — PID of the detached audiotee process
+- `audiotee.pid` — PID of the persistent audiotee process
 - `drain.pid` — PID of the drain subprocess
 
 **Data flow:**
@@ -144,13 +148,15 @@ During recording:  audiotee --[PCM]--> FIFO --[reads]--> AudioTeeRecorder._read_
 **Bootstrap** (`_bootstrap_audiotee()` in `recorder.py`):
 1. Creates the FIFO via `os.mkfifo()`
 2. Opens FIFO with `O_RDWR` (POSIX trick to avoid blocking on open)
-3. Spawns audiotee with `stdout=fd, start_new_session=True` (detached from Python)
+3. Spawns audiotee with `stdout=fd, preexec_fn=os.setpgrp` (new process group, same session)
 4. Spawns a drain subprocess that reads and discards from the FIFO
 5. Writes PIDs to files for cross-process coordination
 
 **Session transitions** (FIFO always has ≥1 reader to prevent SIGPIPE):
 - **Start:** open FIFO `O_RDONLY` → kill drain → recorder is sole reader
 - **Stop:** start new drain → close recorder's fd → drain is sole reader
+
+**Silence detection:** If audiotee produces 15 seconds of all-zero audio, a soft warning is printed. This usually means no system audio is playing yet, or audiotee lacks the required System Settings permission. Use `meetingscribe fix-audio` to troubleshoot.
 
 **Cleanup:** `meetingscribe cleanup` kills both processes and removes state files.
 
@@ -159,7 +165,6 @@ During recording:  audiotee --[PCM]--> FIFO --[reads]--> AudioTeeRecorder._read_
 - Background thread reads 6400-byte chunks (200 ms), accumulates into `chunk_seconds`-length buffers
 - Byte-alignment guard: leftover odd bytes are carried to the next read
 - Silent chunks (mean amplitude < `SILENCE_THRESHOLD`) are discarded before WAV write (same logic as `AudioRecorder`)
-- On first run, macOS shows a one-time System Audio Recording permission prompt (purple Control Center indicator). If denied, audio is silent — the silence detection path handles this gracefully with a warning printed after the first chunk.
 
 ---
 
@@ -298,7 +303,7 @@ Pillow>=10.0.0              # Icon rendering for tray
 `httpx` is used by `_call_openai_compat()` in `summarizer.py` (for OpenAI, Gemini, OpenRouter, and Ollama providers) but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
 
 ### System dependencies
-- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `meetingscribe setup` offers to build it automatically. No virtual driver required.
+- **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `meetingscribe setup` offers to build it automatically. No virtual driver required. **Requires one-time manual permission:** add `audiotee` to System Settings > Privacy & Security > Screen & System Audio Recording. The installer and setup wizard walk the user through this. Without it, audiotee produces silence. Use `meetingscribe test-audiotee` to verify and `meetingscribe fix-audio` to troubleshoot.
 - **macOS ≤13**: BlackHole virtual audio driver (`brew install blackhole-2ch`) + Multi-Output Device in Audio MIDI Setup. Background Music (`brew install --cask background-music`) does **not** fix volume control with BlackHole — this is a macOS architectural limitation. Use audiotee (upgrade to macOS 14+) to get working volume control.
 - **Linux**: PulseAudio or PipeWire monitor sources; `portaudio19-dev`, `libsndfile1`, `ffmpeg` via apt/dnf/pacman
 
@@ -313,7 +318,7 @@ PyTorch and ctranslate2 both bundle `libiomp5.dylib` on macOS. Both `cli.py` and
 ## CLI Commands
 
 ```bash
-meetingscribe setup              # Interactive first-time wizard
+meetingscribe setup              # Interactive first-time wizard (includes TCC permission setup)
 meetingscribe start              # Start recording session
 meetingscribe start -m small     # Use a specific Whisper model
 meetingscribe start -d 6         # Use audio device index 6
@@ -321,6 +326,8 @@ meetingscribe start --no-diarization
 meetingscribe devices            # List available audio input devices
 meetingscribe config             # Show current configuration
 meetingscribe test-audio -d 6 -t 5 -s   # Record 5s from device 6, report amplitude, save WAV
+meetingscribe test-audiotee      # Test audiotee FIFO signal levels (audiotee backend only)
+meetingscribe fix-audio          # Restart audiotee + show permission fix instructions
 meetingscribe cleanup            # Stop persistent audiotee + drain, remove state files
 ```
 
@@ -392,6 +399,8 @@ meetingscribe setup
 meetingscribe start
 meetingscribe devices
 meetingscribe test-audio -d 6 -t 5
+meetingscribe test-audiotee   # test audiotee FIFO signal levels
+meetingscribe fix-audio       # restart audiotee + permission instructions
 meetingscribe cleanup         # kill persistent audiotee + drain
 meetingscribe-tray
 

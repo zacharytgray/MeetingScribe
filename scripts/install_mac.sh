@@ -71,11 +71,35 @@ if [ "$MACOS_MAJOR" -ge 14 ]; then
     rm -rf "$AUDIOTEE_TMP"
     echo "[✓] audiotee built and installed to $AUDIOTEE_BIN"
     echo
-    echo "[i] audiotee captures all system audio without BlackHole or any manual setup."
-    echo "    Volume control works normally. No Audio MIDI Setup changes needed."
-    echo "    On first recording, macOS will ask permission for System Audio Recording."
+    echo "[✓] audiotee built and ready for system audio capture."
+    echo "    No BlackHole, no Audio MIDI Setup, volume works normally."
     echo
   fi
+
+  # --- Grant System Audio Recording permission ---
+  # audiotee needs Screen & System Audio Recording permission in System Settings.
+  # This must be done once, manually — there is no programmatic way to grant it.
+  AUDIOTEE_PATH="$(command -v audiotee 2>/dev/null || echo "$AUDIOTEE_BIN")"
+  echo "┌─────────────────────────────────────────────────────────┐"
+  echo "│  IMPORTANT: Grant audiotee System Audio Recording       │"
+  echo "│                                                         │"
+  echo "│  1. System Settings will open to the right page.        │"
+  echo "│  2. Click '+' and navigate to:                          │"
+  echo "│     $AUDIOTEE_PATH"
+  echo "│  3. Toggle it ON.                                       │"
+  echo "│                                                         │"
+  echo "│  Without this, audiotee will produce silence.           │"
+  echo "└─────────────────────────────────────────────────────────┘"
+  echo
+  read -rp "Open System Settings now? [Y/n]: " OPEN_SETTINGS
+  OPEN_SETTINGS="${OPEN_SETTINGS:-y}"
+  if [[ "$OPEN_SETTINGS" =~ ^[Yy] ]]; then
+    open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+    echo "[i] System Settings opened. Add audiotee and toggle it ON."
+    echo "    Press Enter once you've granted the permission…"
+    read -r
+  fi
+  echo
 fi
 
 if [ "$MACOS_MAJOR" -lt 14 ]; then

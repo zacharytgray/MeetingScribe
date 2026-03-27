@@ -260,6 +260,25 @@ def cmd_setup(_args: argparse.Namespace) -> None:
                 break
             print(c(YELLOW, f"  Choose one of: {', '.join(valid_backends)}"))
 
+        # Prompt user to grant System Audio Recording permission for audiotee
+        if _audiotee_ok and cfg.audio_backend in ("auto", "audiotee"):
+            import shutil as _shutil2
+            _at_path = _shutil2.which("audiotee") or "/usr/local/bin/audiotee"
+            print(c(BOLD, "\n--- System Audio Recording Permission ---"))
+            print(f"  audiotee needs {c(BOLD, 'Screen & System Audio Recording')} permission.")
+            print(f"  Without it, system audio capture will be completely silent.\n")
+            print(f"  1. Open {c(BOLD, 'System Settings > Privacy & Security >')}")
+            print(f"     {c(BOLD, 'Screen & System Audio Recording')}")
+            print(f"  2. Click {c(BOLD, '+')} and add: {c(CYAN, _at_path)}")
+            print(f"  3. Make sure the toggle is {c(GREEN, 'ON')}\n")
+            ans = input("  Open System Settings now? [Y/n]: ").strip().lower()
+            if ans in ("", "y", "yes"):
+                import subprocess as _sp
+                _sp.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"])
+                print(c(CYAN, "  System Settings opened. Add audiotee, toggle ON, then press Enter…"))
+                input()
+            print()
+
     # Audio device (only relevant for sounddevice backend)
     _show_device_prompt = not _is_mac or cfg.audio_backend in ("sounddevice",) or (cfg.audio_backend == "auto" and not (_is_mac and audiotee_available() if _is_mac else False))
     print("\nAvailable input devices:")
@@ -411,10 +430,128 @@ def cmd_test_audio(args: argparse.Namespace) -> None:
 
 
 def cmd_cleanup(_args: argparse.Namespace) -> None:
-    from meetingscribe.recorder import cleanup_audiotee
+    from meetingscribe.recorder import cleanup_audiotee, macos_version
     print(c(BOLD, "\nCleaning up persistent audiotee processes…\n"))
     cleanup_audiotee()
+    if macos_version() >= (15, 0):
+        print(c(YELLOW, "\n  [!] If audio is silent after cleanup, the next session may need"))
+        print(c(YELLOW, "      Screen & System Audio Recording permission re-granted."))
+        print(c(YELLOW, "      Run: meetingscribe fix-audio"))
     print()
+
+
+def cmd_test_audiotee(args: argparse.Namespace) -> None:
+    """Read from the audiotee FIFO for a few seconds and report signal levels."""
+    import select
+    import numpy as np
+    from meetingscribe.recorder import (
+        _ensure_audiotee_fifo, _AUDIOTEE_FIFO, _stop_drain_process,
+        _start_drain_process, SAMPLE_RATE, SILENCE_THRESHOLD,
+        audiotee_available,
+    )
+
+    if not audiotee_available():
+        print(c(RED, "\naudiotee not found in PATH."))
+        print("This command is only for the audiotee backend (macOS 14.2+).")
+        return
+
+    duration = args.duration
+    print(c(BOLD, f"\nTesting audiotee FIFO for {duration:.0f}s…"))
+    print("Play audio through your speakers/headphones now.\n")
+
+    pid = _ensure_audiotee_fifo()
+    print(f"  audiotee PID : {pid}")
+    print(f"  FIFO         : {_AUDIOTEE_FIFO}\n")
+
+    fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDONLY)
+    fifo = os.fdopen(fd, "rb", buffering=0)
+    _stop_drain_process()
+
+    try:
+        import time
+        bytes_needed = int(SAMPLE_RATE * duration * 2)  # 2 bytes per 16-bit sample
+        collected = b""
+        deadline = time.monotonic() + duration + 1.0
+
+        while len(collected) < bytes_needed and time.monotonic() < deadline:
+            ready = select.select([fifo], [], [], 0.5)
+            if ready[0]:
+                chunk = fifo.read(min(6400, bytes_needed - len(collected)))
+                if not chunk:
+                    break
+                collected += chunk
+
+        if len(collected) < 2:
+            print(c(RED, "  RESULT: No data received from FIFO. audiotee may not be running."))
+            return
+
+        if len(collected) % 2 != 0:
+            collected = collected[:-1]
+
+        audio = np.frombuffer(collected, dtype="<i2").astype("float32") / 32768.0
+        peak = float(np.abs(audio).max())
+        mean = float(np.abs(audio).mean())
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        zero_frac = float(np.sum(audio == 0.0)) / len(audio)
+
+        print(f"  Bytes read       : {len(collected):,}")
+        print(f"  Samples          : {len(audio):,}")
+        print(f"  Duration         : {len(audio) / SAMPLE_RATE:.1f}s")
+        print(f"  Peak amplitude   : {peak:.6f}")
+        print(f"  Mean amplitude   : {mean:.6f}")
+        print(f"  RMS              : {rms:.6f}")
+        print(f"  Zero-sample ratio: {zero_frac:.1%}")
+        print(f"  Silence threshold: {SILENCE_THRESHOLD}\n")
+
+        if peak < 0.0001:
+            print(c(RED, "  RESULT: Complete silence — audiotee is producing all-zero audio."))
+            print("          audiotee needs Screen & System Audio Recording permission.")
+            print(f"          Run: {c(BOLD, 'meetingscribe fix-audio')} for instructions.")
+        elif mean < SILENCE_THRESHOLD:
+            print(c(YELLOW, "  RESULT: Very low signal — audio present but extremely quiet."))
+        else:
+            print(c(GREEN, "  RESULT: Audio signal detected — audiotee is working correctly."))
+        print()
+    finally:
+        _start_drain_process()
+        fifo.close()
+
+
+def cmd_fix_audio(_args: argparse.Namespace) -> None:
+    """Restart audiotee and guide the user through granting TCC permission."""
+    import shutil
+    from meetingscribe.recorder import reset_audiotee, audiotee_available
+
+    if not audiotee_available():
+        print(c(RED, "\naudiotee not found in PATH."))
+        print("This command is only for the audiotee backend (macOS 14.2+).")
+        return
+
+    audiotee_path = shutil.which("audiotee") or "audiotee"
+
+    print(c(BOLD, "\n=== MeetingScribe Audio Fix ===\n"))
+    print("This will kill and restart the audiotee process.\n")
+    print("If audio capture still doesn't work after restart, you need to")
+    print("grant Screen & System Audio Recording permission manually:\n")
+    print(f"  1. Open {c(BOLD, 'System Settings > Privacy & Security >')}")
+    print(f"     {c(BOLD, 'Screen & System Audio Recording')}")
+    print(f"  2. Click {c(BOLD, '+')} and add your terminal app (Terminal, iTerm2, etc.)")
+    print(f"     — OR add audiotee directly: {c(CYAN, audiotee_path)}")
+    print("  3. Make sure the toggle is ON")
+    print(f"  4. Run {c(BOLD, 'meetingscribe test-audiotee')} to verify\n")
+
+    confirm = input("Restart audiotee now? [Y/n]: ").strip().lower()
+    if confirm not in ("", "y", "yes"):
+        print("Cancelled.")
+        return
+
+    print()
+    try:
+        pid = reset_audiotee(quiet=True)
+        print(c(GREEN, f"  audiotee restarted (PID {pid}).\n"))
+        print(f"  Verify with: {c(BOLD, 'meetingscribe test-audiotee')}\n")
+    except Exception as e:
+        print(c(RED, f"  Restart failed: {e}\n"))
 
 
 def cmd_start(args: argparse.Namespace) -> None:
@@ -580,8 +717,8 @@ def _build_audiotee() -> bool:
             print(c(YELLOW, f"      {sign_result.stderr.strip()}"))
 
         print(c(GREEN, "  ✓ audiotee installed. Driver-free audio capture is now active."))
-        print(c(CYAN, "  On first recording macOS will prompt for System Audio Recording"))
-        print(c(CYAN, "  permission — grant it once and it will be remembered."))
+        print(c(CYAN, "  IMPORTANT: You must add audiotee to Screen & System Audio Recording"))
+        print(c(CYAN, f"  in System Settings. Path: {dest}"))
         return True
 
     except Exception as e:
@@ -627,6 +764,14 @@ def build_parser() -> argparse.ArgumentParser:
     # cleanup
     sub.add_parser("cleanup", help="Stop persistent audiotee process and remove state files")
 
+    # test-audiotee
+    p_test_at = sub.add_parser("test-audiotee", help="Test audiotee FIFO signal levels")
+    p_test_at.add_argument("-t", "--duration", type=float, default=5.0,
+                           help="Seconds to capture (default: 5)")
+
+    # fix-audio
+    sub.add_parser("fix-audio", help="Reset audio permission and restart audiotee (fixes silence)")
+
     return parser
 
 
@@ -646,6 +791,10 @@ def main() -> None:
         cmd_test_audio(args)
     elif args.command == "cleanup":
         cmd_cleanup(args)
+    elif args.command == "test-audiotee":
+        cmd_test_audiotee(args)
+    elif args.command == "fix-audio":
+        cmd_fix_audio(args)
     else:
         parser.print_help()
 

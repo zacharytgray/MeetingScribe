@@ -48,10 +48,11 @@ _LOOPBACK_KEYWORDS = [
 # prevent the FIFO buffer from filling up (which would block audiotee's
 # CoreAudio callback and stall audio playback).
 #
-# Both processes are started with start_new_session=True so they survive
-# Python exit.  PID files coordinate multiple Python processes sharing the
-# same audiotee instance.  The CoreAudio Tap is created once and never
-# destroyed, avoiding the one-shot restriction entirely.
+# audiotee is started with preexec_fn=os.setpgrp (new process group, same
+# session) so it survives Python exit while inheriting the terminal app's
+# TCC permissions for System Audio Recording.  The drain subprocess uses
+# start_new_session=True since it needs no TCC.  PID files coordinate
+# multiple Python processes sharing the same audiotee instance.
 
 _AUDIOTEE_FIFO = CONFIG_DIR / "audiotee.fifo"
 _AUDIOTEE_PID = CONFIG_DIR / "audiotee.pid"
@@ -174,11 +175,18 @@ def _bootstrap_audiotee() -> int:
     fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDWR)
 
     try:
+        # Use setpgrp (new process group) instead of setsid (new session).
+        # A new process group prevents audiotee from receiving Ctrl+C (SIGINT)
+        # and lets it survive Python exit, while staying in the same terminal
+        # session so it inherits the terminal app's TCC permissions for System
+        # Audio Recording.  start_new_session=True (setsid) would sever the
+        # TCC inheritance, causing macOS to silently deny audio capture with
+        # no permission prompt and no entry in System Settings.
         proc = subprocess.Popen(
             ["audiotee", "--sample-rate", "16000"],
             stdout=fd,
             stderr=None,
-            start_new_session=True,
+            preexec_fn=os.setpgrp,
         )
     finally:
         os.close(fd)
@@ -257,6 +265,28 @@ def cleanup_audiotee(*, quiet: bool = False) -> None:
             print("  No persistent audiotee processes found.")
         else:
             print("  Cleanup complete.")
+
+
+def reset_audiotee(*, quiet: bool = False) -> int:
+    """Kill audiotee and restart it.
+
+    Returns the new audiotee PID.
+    """
+    cleanup_audiotee(quiet=True)
+
+    if not quiet:
+        import shutil
+        audiotee_path = shutil.which("audiotee") or "audiotee"
+        print(
+            "\n[audiotee] Restarting audiotee…\n"
+            "  If audio is still silent, ensure audiotee has Screen &\n"
+            "  System Audio Recording permission in System Settings:\n"
+            "    System Settings > Privacy & Security >\n"
+            "    Screen & System Audio Recording > '+' > add:\n"
+            f"    {audiotee_path}\n"
+        )
+
+    return _bootstrap_audiotee()
 
 
 def list_devices() -> list[dict]:
@@ -532,10 +562,6 @@ class AudioTeeRecorder:
                         "  This is normal if no audio is playing through your speakers yet.\n"
                         "  The loopback stream will start capturing once system audio begins.\n"
                         "  Your microphone stream (if configured) is unaffected.\n"
-                        "\n"
-                        "  If you DO expect system audio and this persists, audiotee may\n"
-                        "  need to be re-signed:  codesign --sign - --force $(which audiotee)\n"
-                        "  Then run:  meetingscribe cleanup  and start a new session.\n"
                     )
 
             buffer.append(audio)
