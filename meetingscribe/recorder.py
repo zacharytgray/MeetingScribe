@@ -36,27 +36,18 @@ _LOOPBACK_KEYWORDS = [
 
 
 # ---------------------------------------------------------------------------
-# audiotee persistent-process (FIFO architecture)
+# audiotee process management (per-session lifecycle)
 # ---------------------------------------------------------------------------
-# On macOS 16 (Tahoe), CoreAudio Process Taps exhibit a one-shot behavior:
-# audio is captured only on the first run after TCC permission is granted.
-# Each subsequent audiotee invocation starts a new tap, which macOS silences.
-#
-# Fix: keep audiotee alive as a *detached background process* writing to a
-# named FIFO (~/.meetingscribe/audiotee.fifo).  A second detached process
-# (the "drain") reads and discards audio between recording sessions to
-# prevent the FIFO buffer from filling up (which would block audiotee's
-# CoreAudio callback and stall audio playback).
+# audiotee is spawned fresh at the start of each recording session and killed
+# when the session ends.  TCC permission is granted directly to the audiotee
+# binary in System Settings, so every new invocation inherits it.
 #
 # audiotee is started with preexec_fn=os.setpgrp (new process group, same
-# session) so it survives Python exit while inheriting the terminal app's
-# TCC permissions for System Audio Recording.  The drain subprocess uses
-# start_new_session=True since it needs no TCC.  PID files coordinate
-# multiple Python processes sharing the same audiotee instance.
+# terminal session) so it ignores Ctrl+C while preserving TCC context.
+# A PID file is written so cleanup_audiotee() can kill orphaned processes.
 
 _AUDIOTEE_FIFO = CONFIG_DIR / "audiotee.fifo"
 _AUDIOTEE_PID = CONFIG_DIR / "audiotee.pid"
-_DRAIN_PID = CONFIG_DIR / "drain.pid"
 
 
 def _is_pid_alive(pid: int, expected_name: str) -> bool:
@@ -99,70 +90,37 @@ def _write_pid(path: Path, pid: int) -> None:
     tmp.rename(path)
 
 
-def _start_drain_process() -> int:
-    """Spawn a detached subprocess that reads from the FIFO and discards data.
-
-    The drain prevents the FIFO buffer from filling up while no recording
-    session is active, which would otherwise block audiotee's CoreAudio
-    callback and stall system audio playback.
-
-    Returns the drain process PID.
-    """
-    drain_script = (
-        "import os,sys,signal\n"
-        "signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))\n"
-        "f=os.open(sys.argv[1],os.O_RDONLY)\n"
-        "while True:\n"
-        " try:\n"
-        "  d=os.read(f,65536)\n"
-        "  if not d:break\n"
-        " except:break\n"
-    )
-    proc = subprocess.Popen(
-        [sys.executable, "-c", drain_script, str(_AUDIOTEE_FIFO)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    _write_pid(_DRAIN_PID, proc.pid)
-    return proc.pid
-
-
-def _stop_drain_process() -> None:
-    """Kill the drain subprocess if it is running."""
-    pid = _read_pid(_DRAIN_PID, "python")
-    if pid is None:
-        return
+def _kill_pid(pid: int, timeout: float = 5.0) -> None:
+    """Send SIGTERM, wait up to *timeout* seconds, then SIGKILL if needed."""
     try:
         os.kill(pid, signal.SIGTERM)
-        for _ in range(20):          # wait up to 2 s
-            try:
-                os.kill(pid, 0)
-                time.sleep(0.1)
-            except ProcessLookupError:
-                break
-        else:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+            time.sleep(0.1)
+        except ProcessLookupError:
+            return
+    try:
+        os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    try:
-        _DRAIN_PID.unlink()
-    except FileNotFoundError:
-        pass
 
 
-def _bootstrap_audiotee() -> int:
-    """Start audiotee + drain as detached processes writing/reading a FIFO.
+def _spawn_audiotee_session() -> tuple[int, object]:
+    """Create FIFO, spawn audiotee, return ``(pid, fifo_file)``.
 
-    Returns the audiotee PID.
+    Cleans up any stale audiotee from a previous crashed session first.
+    The caller owns both the PID and the file object and must kill / close
+    them when done.
     """
+    cleanup_audiotee(quiet=True)
+
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Create FIFO if it doesn't exist (or replace a non-FIFO file at the path).
+    # Create FIFO (or replace a non-FIFO file at the path).
     if _AUDIOTEE_FIFO.exists():
         if not stat.S_ISFIFO(os.stat(str(_AUDIOTEE_FIFO)).st_mode):
             _AUDIOTEE_FIFO.unlink()
@@ -170,81 +128,42 @@ def _bootstrap_audiotee() -> int:
     else:
         os.mkfifo(str(_AUDIOTEE_FIFO))
 
-    # O_RDWR opens a FIFO without blocking (POSIX-guaranteed).  This avoids
-    # the deadlock where O_WRONLY blocks until a reader opens the other end.
+    # O_RDWR opens a FIFO without blocking (POSIX trick).
     fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDWR)
-
     try:
-        # Use setpgrp (new process group) instead of setsid (new session).
-        # A new process group prevents audiotee from receiving Ctrl+C (SIGINT)
-        # and lets it survive Python exit, while staying in the same terminal
-        # session so it inherits the terminal app's TCC permissions for System
-        # Audio Recording.  start_new_session=True (setsid) would sever the
-        # TCC inheritance, causing macOS to silently deny audio capture with
-        # no permission prompt and no entry in System Settings.
+        # setpgrp: new process group (ignores Ctrl+C), same terminal session
+        # (preserves TCC permission inheritance).
         proc = subprocess.Popen(
             ["audiotee", "--sample-rate", "16000"],
             stdout=fd,
             stderr=None,
             preexec_fn=os.setpgrp,
         )
-    finally:
+    except Exception:
         os.close(fd)
+        raise
 
     _write_pid(_AUDIOTEE_PID, proc.pid)
-    _start_drain_process()
-    return proc.pid
 
+    # Open for reading — audiotee is already writing, so O_RDONLY won't block.
+    read_fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDONLY)
+    fifo_file = os.fdopen(read_fd, "rb", buffering=0)
 
-def _ensure_audiotee_fifo() -> int:
-    """Ensure audiotee is running as a persistent FIFO-backed process.
+    # Close the bootstrap fd; audiotee has its inherited copy, we have O_RDONLY.
+    os.close(fd)
 
-    Returns the audiotee PID (starting it if necessary).
-    """
-    pid = _read_pid(_AUDIOTEE_PID, "audiotee")
-    if pid is not None:
-        # Verify the FIFO still exists on disk.
-        if not _AUDIOTEE_FIFO.exists():
-            # FIFO was deleted — audiotee still holds its fd, but new readers
-            # cannot connect.  Kill everything and bootstrap fresh.
-            cleanup_audiotee(quiet=True)
-            return _bootstrap_audiotee()
-        # Ensure drain is running (may have crashed).
-        if _read_pid(_DRAIN_PID, "python") is None:
-            _start_drain_process()
-        return pid
-    return _bootstrap_audiotee()
+    return proc.pid, fifo_file
 
 
 def cleanup_audiotee(*, quiet: bool = False) -> None:
-    """Kill persistent audiotee + drain processes and remove state files.
+    """Kill any orphaned audiotee process and remove state files.
 
     Public API — called by ``meetingscribe cleanup``.
     """
-    drain_pid = _read_pid(_DRAIN_PID, "python")
     audiotee_pid = _read_pid(_AUDIOTEE_PID, "audiotee")
 
-    if drain_pid is not None:
-        _stop_drain_process()
-        if not quiet:
-            print(f"  Stopped drain process (PID {drain_pid}).")
-
     if audiotee_pid is not None:
-        try:
-            os.kill(audiotee_pid, signal.SIGTERM)
-            for _ in range(50):       # wait up to 5 s
-                try:
-                    os.kill(audiotee_pid, 0)
-                    time.sleep(0.1)
-                except ProcessLookupError:
-                    break
-            else:
-                try:
-                    os.kill(audiotee_pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-        except ProcessLookupError:
-            pass
+        _kill_pid(audiotee_pid)
         try:
             _AUDIOTEE_PID.unlink()
         except FileNotFoundError:
@@ -261,16 +180,17 @@ def cleanup_audiotee(*, quiet: bool = False) -> None:
             print("  Removed FIFO.")
 
     if not quiet:
-        if not drain_pid and not audiotee_pid:
-            print("  No persistent audiotee processes found.")
+        if not audiotee_pid:
+            print("  No audiotee processes found.")
         else:
             print("  Cleanup complete.")
 
 
-def reset_audiotee(*, quiet: bool = False) -> int:
-    """Kill audiotee and restart it.
+def reset_audiotee(*, quiet: bool = False) -> None:
+    """Kill any stale audiotee and print permission instructions.
 
-    Returns the new audiotee PID.
+    Called by ``meetingscribe fix-audio``.  Does not restart audiotee —
+    it will start fresh with the next recording session.
     """
     cleanup_audiotee(quiet=True)
 
@@ -278,15 +198,15 @@ def reset_audiotee(*, quiet: bool = False) -> int:
         import shutil
         audiotee_path = shutil.which("audiotee") or "audiotee"
         print(
-            "\n[audiotee] Restarting audiotee…\n"
+            "\n[audiotee] Cleaned up stale audiotee process.\n"
+            "  audiotee will start fresh with the next recording session.\n"
+            "\n"
             "  If audio is still silent, ensure audiotee has Screen &\n"
             "  System Audio Recording permission in System Settings:\n"
             "    System Settings > Privacy & Security >\n"
             "    Screen & System Audio Recording > '+' > add:\n"
             f"    {audiotee_path}\n"
         )
-
-    return _bootstrap_audiotee()
 
 
 def list_devices() -> list[dict]:
@@ -433,21 +353,14 @@ class AudioRecorder:
 
 class AudioTeeRecorder:
     """
-    Captures system audio via a persistent ``audiotee`` process writing to a
-    named FIFO (macOS 14.2+).  audiotee uses CoreAudio Taps to record all
-    system output without a virtual driver — audio still plays through the
-    user's speakers/headphones normally.
+    Captures system audio via ``audiotee`` + a named FIFO (macOS 14.2+).
 
-    The audiotee process runs detached (``preexec_fn=os.setpgrp``) — new
-    process group so it survives Python exit and ignores Ctrl+C, but same
-    terminal session so it inherits the terminal app's TCC permission for
-    Screen & System Audio Recording.  Between recording sessions a lightweight
-    drain process reads and discards from the FIFO so audiotee never blocks.
+    audiotee is spawned at the start of each recording session and killed
+    when the session ends — no persistent background process.  TCC permission
+    is granted to the audiotee binary directly, so each invocation works.
 
-    Implements the same public interface as AudioRecorder so it can be used
-    as a drop-in replacement for the loopback stream.
-
-    Requires the ``audiotee`` binary in PATH.  See: github.com/makeusabrew/audiotee
+    Implements the same public interface as AudioRecorder.
+    Requires ``audiotee`` in PATH.  See: github.com/makeusabrew/audiotee
     """
 
     def __init__(self, chunk_seconds: int = CHUNK_SECONDS) -> None:
@@ -458,6 +371,7 @@ class AudioTeeRecorder:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._fifo_file: Optional[object] = None
+        self._audiotee_pid: Optional[int] = None
         self._started = False
 
     def start(self) -> None:
@@ -466,17 +380,8 @@ class AudioTeeRecorder:
         self._started = True
         self._stop_event.clear()
 
-        # Ensure the persistent audiotee process is running.
-        _ensure_audiotee_fifo()
-
-        # Open the FIFO for reading BEFORE killing the drain so the FIFO
-        # always has at least one reader (prevents audiotee from blocking
-        # or receiving SIGPIPE).
-        fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDONLY)
-        self._fifo_file = os.fdopen(fd, "rb", buffering=0)
-
-        # Now safe to stop drain — we are the reader.
-        _stop_drain_process()
+        # Spawn a fresh audiotee for this session (kills any stale one first).
+        self._audiotee_pid, self._fifo_file = _spawn_audiotee_session()
 
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name="audiotee-reader"
@@ -490,20 +395,33 @@ class AudioTeeRecorder:
         if self._thread:
             self._thread.join(timeout=10)
 
-        # Start drain BEFORE closing our fd so the FIFO always has at
-        # least one reader.
-        _start_drain_process()
-
         if self._fifo_file is not None:
             try:
                 self._fifo_file.close()
             except Exception:
                 pass
             self._fifo_file = None
+
+        # Kill audiotee — no persistent process between sessions.
+        if self._audiotee_pid is not None:
+            _kill_pid(self._audiotee_pid)
+            self._audiotee_pid = None
+
+        # Remove state files.
+        for p in (_AUDIOTEE_PID, _AUDIOTEE_FIFO):
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
+
         self._started = False
 
     def cleanup(self) -> None:
         import shutil
+        # kill audiotee if stop() wasn't called (e.g. crash)
+        if self._audiotee_pid is not None:
+            _kill_pid(self._audiotee_pid)
+            self._audiotee_pid = None
         try:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
         except Exception:

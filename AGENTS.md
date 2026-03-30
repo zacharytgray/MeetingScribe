@@ -126,39 +126,29 @@ save_summary() [summarizer.py]
     - Handles filename collisions with _2, _3 suffix
 ```
 
-### AudioTeeRecorder internals (FIFO architecture)
+### AudioTeeRecorder internals (per-session FIFO)
 
-audiotee runs as a **persistent background process** writing raw PCM to a named FIFO (`~/.meetingscribe/audiotee.fifo`). This avoids creating a new CoreAudio Process Tap for each recording session.
+audiotee is spawned fresh at the start of each recording session and killed when the session ends. No persistent background process, no drain subprocess. This prevents memory leaks from long-running audiotee processes.
 
 **macOS permission requirement:** audiotee must be added to **System Settings > Privacy & Security > Screen & System Audio Recording** and toggled ON. Without this, audiotee produces all-zero PCM (complete silence). The installer and setup wizard guide the user through this. The `meetingscribe fix-audio` command provides troubleshooting instructions.
 
-**Process group vs session:** audiotee is spawned with `preexec_fn=os.setpgrp` — this creates a new **process group** (so Ctrl+C doesn't kill it, and it survives Python exit) while staying in the same **terminal session** (preserving TCC permission inheritance). Using `start_new_session=True` (`setsid`) would sever the TCC context, causing macOS to silently deny audio capture.
+**Why per-session works:** TCC permission is granted directly to the audiotee binary in System Settings, so every new invocation inherits it. The earlier persistent-process design was built around a misdiagnosis (one-shot TCC); the real root cause was `start_new_session=True` (`setsid`) severing TCC context entirely. With `preexec_fn=os.setpgrp` and binary-level TCC, per-session is safe.
 
-**State files** (in `~/.meetingscribe/`):
+**State files** (in `~/.meetingscribe/`, exist only during a recording session):
 - `audiotee.fifo` — named pipe; audiotee writes raw PCM here
-- `audiotee.pid` — PID of the persistent audiotee process
-- `drain.pid` — PID of the drain subprocess
+- `audiotee.pid` — PID of audiotee (safety net for crash cleanup)
 
-**Data flow:**
-```
-Between sessions:  audiotee --[PCM]--> FIFO --[reads+discards]--> drain
-During recording:  audiotee --[PCM]--> FIFO --[reads]--> AudioTeeRecorder._read_loop()
-```
-
-**Bootstrap** (`_bootstrap_audiotee()` in `recorder.py`):
-1. Creates the FIFO via `os.mkfifo()`
-2. Opens FIFO with `O_RDWR` (POSIX trick to avoid blocking on open)
-3. Spawns audiotee with `stdout=fd, preexec_fn=os.setpgrp` (new process group, same session)
-4. Spawns a drain subprocess that reads and discards from the FIFO
-5. Writes PIDs to files for cross-process coordination
-
-**Session transitions** (FIFO always has ≥1 reader to prevent SIGPIPE):
-- **Start:** open FIFO `O_RDONLY` → kill drain → recorder is sole reader
-- **Stop:** start new drain → close recorder's fd → drain is sole reader
+**Session lifecycle** (`_spawn_audiotee_session()` in `recorder.py`):
+1. `cleanup_audiotee()` kills any orphaned process from a crashed session
+2. Creates the FIFO via `os.mkfifo()`
+3. Opens FIFO with `O_RDWR` (POSIX trick to avoid blocking on open)
+4. Spawns audiotee with `stdout=fd, preexec_fn=os.setpgrp`
+5. Opens FIFO `O_RDONLY` for the read loop, closes `O_RDWR`
+6. On stop: closes reader fd, kills audiotee, removes state files
 
 **Silence detection:** If audiotee produces 15 seconds of all-zero audio, a soft warning is printed. This usually means no system audio is playing yet, or audiotee lacks the required System Settings permission. Use `meetingscribe fix-audio` to troubleshoot.
 
-**Cleanup:** `meetingscribe cleanup` kills both processes and removes state files.
+**Cleanup:** `meetingscribe cleanup` kills any orphaned audiotee and removes state files.
 
 - PCM format: 16-bit signed integer, little-endian, mono, 16 kHz (`dtype="<i2"`)
 - Conversion: `np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0`
@@ -180,7 +170,7 @@ The mic stream always gets `default_speaker=config.user_name`. Diarization is in
 `CrossChunkSpeakerTracker` in `transcriber.py` maintains consistent global speaker IDs across 30-second chunks. For each chunk, pyannote embeddings are extracted per speaker, normalized, and compared via cosine similarity (threshold 0.75) against the running registry. If similarity ≥ 0.75, the local speaker maps to the existing global label (and the embedding is averaged). Otherwise a new "Speaker N" label is created. Falls back to sequential labels if embedding extraction is unavailable.
 
 ### Acoustic echo deduplication
-When speakers (not headphones) are used, the mic picks up audio playing through them, creating near-duplicate transcript entries. `_remove_echo_segments()` in `session.py` compares every user-labeled mic segment against every loopback segment. If temporal proximity (overlap or within 2.5s) **and** word overlap ≥ 0.70 — the mic segment is an acoustic echo and is dropped. Headphones eliminate the problem entirely; this is a software fallback.
+When speakers (not headphones) are used, the mic picks up audio playing through them, creating near-duplicate transcript entries. `_remove_echo_segments()` in `session.py` compares every user-labeled mic segment against every loopback segment. If temporal proximity (overlap or gap ≤ 8s) **and** word overlap ≥ 0.65 (or character-level sequence similarity ≥ 0.50) — the mic segment is an acoustic echo and is dropped. Headphones eliminate the problem entirely; this is a software fallback.
 
 ### Summarization — multi-provider with configurable order
 `summarizer.py` supports five providers iterated in `config.provider_order`; the first active one wins:

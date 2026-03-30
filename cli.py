@@ -430,13 +430,9 @@ def cmd_test_audio(args: argparse.Namespace) -> None:
 
 
 def cmd_cleanup(_args: argparse.Namespace) -> None:
-    from meetingscribe.recorder import cleanup_audiotee, macos_version
-    print(c(BOLD, "\nCleaning up persistent audiotee processes…\n"))
+    from meetingscribe.recorder import cleanup_audiotee
+    print(c(BOLD, "\nCleaning up audiotee…\n"))
     cleanup_audiotee()
-    if macos_version() >= (15, 0):
-        print(c(YELLOW, "\n  [!] If audio is silent after cleanup, the next session may need"))
-        print(c(YELLOW, "      Screen & System Audio Recording permission re-granted."))
-        print(c(YELLOW, "      Run: meetingscribe fix-audio"))
     print()
 
 
@@ -445,9 +441,9 @@ def cmd_test_audiotee(args: argparse.Namespace) -> None:
     import select
     import numpy as np
     from meetingscribe.recorder import (
-        _ensure_audiotee_fifo, _AUDIOTEE_FIFO, _stop_drain_process,
-        _start_drain_process, SAMPLE_RATE, SILENCE_THRESHOLD,
-        audiotee_available,
+        _spawn_audiotee_session, _kill_pid, cleanup_audiotee,
+        _AUDIOTEE_FIFO, _AUDIOTEE_PID,
+        SAMPLE_RATE, SILENCE_THRESHOLD, audiotee_available,
     )
 
     if not audiotee_available():
@@ -459,13 +455,9 @@ def cmd_test_audiotee(args: argparse.Namespace) -> None:
     print(c(BOLD, f"\nTesting audiotee FIFO for {duration:.0f}s…"))
     print("Play audio through your speakers/headphones now.\n")
 
-    pid = _ensure_audiotee_fifo()
+    pid, fifo = _spawn_audiotee_session()
     print(f"  audiotee PID : {pid}")
     print(f"  FIFO         : {_AUDIOTEE_FIFO}\n")
-
-    fd = os.open(str(_AUDIOTEE_FIFO), os.O_RDONLY)
-    fifo = os.fdopen(fd, "rb", buffering=0)
-    _stop_drain_process()
 
     try:
         import time
@@ -517,12 +509,13 @@ def cmd_test_audiotee(args: argparse.Namespace) -> None:
             print(c(GREEN, "  RESULT: Audio signal detected — audiotee is working correctly."))
         print()
     finally:
-        _start_drain_process()
         fifo.close()
+        _kill_pid(pid)
+        cleanup_audiotee(quiet=True)
 
 
 def cmd_fix_audio(_args: argparse.Namespace) -> None:
-    """Restart audiotee and guide the user through granting TCC permission."""
+    """Kill stale audiotee and guide the user through granting TCC permission."""
     import shutil
     from meetingscribe.recorder import reset_audiotee, audiotee_available
 
@@ -534,27 +527,24 @@ def cmd_fix_audio(_args: argparse.Namespace) -> None:
     audiotee_path = shutil.which("audiotee") or "audiotee"
 
     print(c(BOLD, "\n=== MeetingScribe Audio Fix ===\n"))
-    print("This will kill and restart the audiotee process.\n")
-    print("If audio capture still doesn't work after restart, you need to")
-    print("grant Screen & System Audio Recording permission manually:\n")
+    print("This will kill any stale audiotee process and clean up state files.")
+    print("A fresh audiotee will start automatically with your next recording.\n")
+    print("If audio capture is still silent, grant permission manually:\n")
     print(f"  1. Open {c(BOLD, 'System Settings > Privacy & Security >')}")
     print(f"     {c(BOLD, 'Screen & System Audio Recording')}")
     print(f"  2. Click {c(BOLD, '+')} and add audiotee: {c(CYAN, audiotee_path)}")
     print("  3. Make sure the toggle is ON")
     print(f"  4. Run {c(BOLD, 'meetingscribe test-audiotee')} to verify\n")
 
-    confirm = input("Restart audiotee now? [Y/n]: ").strip().lower()
+    confirm = input("Clean up now? [Y/n]: ").strip().lower()
     if confirm not in ("", "y", "yes"):
         print("Cancelled.")
         return
 
     print()
-    try:
-        pid = reset_audiotee(quiet=True)
-        print(c(GREEN, f"  audiotee restarted (PID {pid}).\n"))
-        print(f"  Verify with: {c(BOLD, 'meetingscribe test-audiotee')}\n")
-    except Exception as e:
-        print(c(RED, f"  Restart failed: {e}\n"))
+    reset_audiotee(quiet=True)
+    print(c(GREEN, "  Done. audiotee will start fresh with the next recording session.\n"))
+    print(f"  Verify with: {c(BOLD, 'meetingscribe test-audiotee')}\n")
 
 
 def cmd_start(args: argparse.Namespace) -> None:
