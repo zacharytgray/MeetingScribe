@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-MeetingScribe is a Python CLI + system tray app that:
+MeetingScribe is a Python CLI + native macOS app that:
 1. Captures system audio from any meeting (Teams, Zoom, etc.) via CoreAudio Taps (audiotee, macOS 14.2+) or a virtual loopback device (BlackHole on macOS ≤13, PulseAudio monitor on Linux)
 2. Optionally captures the user's microphone as a separate parallel stream, attributed by name
 3. Transcribes locally using `faster-whisper` (free, runs on CPU; no audio leaves the machine)
@@ -23,14 +23,26 @@ meetingscribe/
 ├── CLAUDE.md                        ← symlink → AGENTS.md (Claude Code compatibility)
 ├── README.md                        ← end-user docs
 ├── cli.py                           ← CLI entry point (run directly or via `meetingscribe` command)
-├── tray.py                          ← System tray / menu bar app (pystray)
+├── tray.py                          ← System tray / menu bar app (pystray, Linux / cross-platform fallback)
 ├── pyproject.toml                   ← package definition; console script entry points
 ├── assets/
-│   └── header.png                   ← repository header image
+│   ├── header.png                   ← repository header image
+│   ├── AppIcon.icns                 ← generated macOS app icon (run scripts/generate_icon.py)
+│   └── screenshot_*.png             ← README screenshots
 ├── meetingscribe/
 │   ├── __init__.py                  ← public API exports
-│   ├── cli_entry.py                 ← shim so installed `meetingscribe` / `meetingscribe-tray` commands work
+│   ├── cli_entry.py                 ← shim so installed `meetingscribe` / `meetingscribe-tray` /
+│   │                                   `meetingscribe-app` commands work
 │   ├── config.py                    ← Config dataclass + load/save from ~/.meetingscribe/config.json
+│   ├── app.py                       ← Native macOS app: NSApplication, AppController (central state),
+│   │                                   _AppDelegate, main menu, recording lifecycle
+│   ├── app_window.py                ← Settings window: NSToolbar-based preferences with 5 tabs
+│   │                                   (General, Audio, Transcription, Summarization, Transcript);
+│   │                                   _FlippedView + _LayoutBuilder for top-down form layout
+│   ├── app_statusitem.py            ← Menu bar: NSStatusItem with SF Symbol mic icon, recording menu,
+│   │                                   quick settings submenus, _MenuTarget ObjC delegate
+│   ├── app_utils.py                 ← Shared UI helpers (icon setup, dispatch_to_main); no ObjC class
+│   │                                   definitions — safe to import from any module
 │   ├── recorder.py                  ← AudioRecorder (sounddevice) + AudioTeeRecorder (audiotee subprocess);
 │   │                                   audiotee_available(), macos_version() helpers
 │   ├── transcriber.py               ← Transcriber: faster-whisper + pyannote diarization + CrossChunkSpeakerTracker
@@ -38,11 +50,12 @@ meetingscribe/
 │   └── session.py                   ← MeetingSession: orchestrates dual streams + echo dedup + summarizer;
 │                                       _make_loopback_recorder() factory
 └── scripts/
-    ├── install_mac.sh               ← macOS installer (builds audiotee from source on macOS 14.2+,
-    │                                   creates ~/.local/bin launchers that resolve the venv via $HOME
-    │                                   and adds ~/.local/bin to PATH when needed)
-    └── install_linux.sh             ← Linux installer (creates the same $HOME-based launchers and
-                                        adds ~/.local/bin to PATH when needed)
+    ├── install_mac.sh               ← macOS installer (builds audiotee, creates launchers, builds .app,
+    │                                   installs to /Applications, registers with Spotlight)
+    ├── install_linux.sh             ← Linux installer (creates $HOME-based launchers, adds to PATH)
+    ├── build_app.sh                 ← Builds thin MeetingScribe.app bundle (~140 KB shell wrapper);
+    │                                   --install flag copies to /Applications + registers with lsregister
+    └── generate_icon.py             ← Programmatically generates AppIcon.icns (mic on gradient background)
 ```
 
 ---
@@ -155,6 +168,45 @@ audiotee is spawned fresh at the start of each recording session and killed when
 - Background thread reads 6400-byte chunks (200 ms), accumulates into `chunk_seconds`-length buffers
 - Byte-alignment guard: leftover odd bytes are carried to the next read
 - Silent chunks (mean amplitude < `SILENCE_THRESHOLD`) are discarded before WAV write (same logic as `AudioRecorder`)
+
+---
+
+## Native macOS App (PyObjC)
+
+The native app (`meetingscribe/app.py`) provides a proper macOS experience: menu bar icon, toolbar-based preferences window, Spotlight discovery, and Cmd+Q/Cmd+, support. It uses PyObjC to talk directly to AppKit from the same Python process — no IPC, no subprocess coordination.
+
+### Architecture
+
+```
+AppController (app.py)
+  ├── owns MeetingSession, Config, recording state
+  ├── StatusBarController (app_statusitem.py)
+  │     NSStatusItem with SF Symbol mic.fill icon
+  │     _MenuTarget ObjC delegate routes menu actions → AppController
+  └── SettingsWindow (app_window.py)
+        NSWindow + NSToolbar with 5 tabs
+        _Delegate ObjC class handles all toolbar + control actions
+        _FlippedView (NSView subclass, isFlipped=True) for top-down layout
+        _LayoutBuilder helper for sequential form construction
+```
+
+### Key design choices
+
+**Single process.** The native app runs in the same Python process as the audio/transcription pipeline. No IPC needed — `AppController` holds a direct reference to `MeetingSession`.
+
+**Thin .app bundle.** The `.app` in `/Applications` is a ~140 KB shell script that runs `$HOME/.meetingscribe/venv/bin/python -m meetingscribe.app`. Heavy deps (PyTorch, pyannote) stay in the venv. `Info.plist` sets `LSUIElement=true` (no dock icon by default).
+
+**Activation policy switching.** When the preferences window opens, the app switches to `NSApplicationActivationPolicyRegular` (dock icon visible, app menu active). When it closes, it switches back to `NSApplicationActivationPolicyAccessory` (menu bar only).
+
+**ObjC class registration.** PyObjC registers ObjC classes (`_AppDelegate`, `_MenuTarget`, `_Delegate`, `_FlippedView`) globally with the ObjC runtime. Re-importing a module that defines these classes causes a fatal error. `app_utils.py` exists specifically to hold shared utilities without any ObjC class definitions, making it safe to import from anywhere.
+
+**_LayoutBuilder pattern.** `app_window.py` uses `_FlippedView` (y=0 at top) and `_LayoutBuilder` to lay out controls sequentially. Builder methods (`section()`, `row_field()`, `row_popup()`, `row_checkbox()`, `hint()`) accumulate subviews top-down, then `_wrap_in_scroll()` wraps the result in an `NSScrollView`. This avoids manual coordinate math.
+
+### Entry points
+
+- `meetingscribe-app` CLI command → `meetingscribe.cli_entry:app_main` → `meetingscribe.app:main()`
+- `/Applications/MeetingScribe.app` → shell script → `python -m meetingscribe.app`
+- `tray.py` / `meetingscribe-tray` → pystray-based fallback (cross-platform)
 
 ---
 
@@ -286,11 +338,15 @@ numpy>=1.24,<2              # Pinned <2 for ctranslate2 compatibility
 anthropic>=0.25.0           # Claude API client
 pyannote.audio>=3.1.0       # Speaker diarization
 torch>=2.0.0                # Required by pyannote
-pystray>=0.19.4             # System tray app
+pystray>=0.19.4             # System tray app (Linux / cross-platform fallback)
 Pillow>=10.0.0              # Icon rendering for tray
+# optional (macOS native app):
+pyobjc-framework-Cocoa>=10.0  # PyObjC bindings for AppKit/Foundation
 ```
 
 `httpx` is used by `_call_openai_compat()` in `summarizer.py` (for OpenAI, Gemini, OpenRouter, and Ollama providers) but is not explicitly listed in `pyproject.toml` — it is available as a transitive dependency of `anthropic`. If `anthropic` is ever removed, `httpx` must be added explicitly.
+
+`pyobjc-framework-Cocoa` is listed under `[project.optional-dependencies] macos = [...]` in pyproject.toml. The macOS installer and `build_app.sh` install it automatically.
 
 ### System dependencies
 - **macOS 14.2+ (Sonoma)**: [audiotee](https://github.com/makeusabrew/audiotee) — builds from source via `swift build -c release`; `meetingscribe setup` offers to build it automatically. No virtual driver required. **Requires one-time manual permission:** add `audiotee` to System Settings > Privacy & Security > Screen & System Audio Recording. The installer and setup wizard walk the user through this. Without it, audiotee produces silence. Use `meetingscribe test-audiotee` to verify and `meetingscribe fix-audio` to troubleshoot.
@@ -330,9 +386,9 @@ meetingscribe cleanup            # Stop persistent audiotee + drain, remove stat
 
 ---
 
-## Tray App (`tray.py`)
+## Tray App (`tray.py`) — Cross-platform Fallback
 
-Run with `meetingscribe-tray` (or `python tray.py` during development). Uses `pystray` with a custom mic icon drawn via Pillow. Grey = idle, Red = recording.
+Run with `meetingscribe-tray` (or `python tray.py` during development). Uses `pystray` with a custom mic icon drawn via Pillow. Grey = idle, Red = recording. On macOS, the native app (`meetingscribe-app`) is preferred; `tray.py` is the primary GUI for Linux.
 
 Menu: Start Recording / Stop & Summarize / Show Live Transcript / Open Last Note / Open Notes Folder / Settings / Quit
 
@@ -362,7 +418,7 @@ Model loading happens in a background thread on Start. Live transcript is writte
 
 10. **Hybrid meeting support** — A mix of in-room participants and remote participants. This requires diarization on both streams simultaneously: pyannote on the loopback to distinguish remote speakers, and pyannote on the mic to distinguish in-room speakers. The merged transcript must reconcile speaker labels across both diarization runs without collisions. The `CrossChunkSpeakerTracker` embedding approach could extend to this, but the two streams would need a shared or coordinated tracker.
 
-11. **Packaged installer** — A `brew install` formula (macOS) or standalone `.app` / `.AppImage` (Linux) would dramatically lower the barrier to entry. The current `pip install -e .` flow works but requires Python environment setup that many users will struggle with.
+11. **Homebrew formula** — A `brew install meetingscribe` formula would simplify installation. The `.app` bundle is in place but still requires `git clone` + `install_mac.sh` to set up the venv and dependencies.
 
 12. **Windows support** — Currently untested and unsupported. Windows audio loopback can be captured via WASAPI loopback mode (supported by sounddevice on Windows). The main gap is a Windows-compatible alternative to BlackHole and the Multi-Output Device setup.
 
@@ -393,6 +449,7 @@ meetingscribe test-audiotee   # test audiotee FIFO signal levels
 meetingscribe fix-audio       # restart audiotee + permission instructions
 meetingscribe cleanup         # kill persistent audiotee + drain
 meetingscribe-tray
+meetingscribe-app            # native macOS app
 
 # Development from project root (without install)
 python cli.py setup
@@ -401,6 +458,10 @@ python cli.py devices
 python cli.py test-audio -d 6 -t 5
 python cli.py cleanup
 python tray.py
+python -m meetingscribe.app  # native app from source
+
+# Build and install .app bundle
+bash scripts/build_app.sh --install
 
 # Editable install
 python3.12 -m venv .venv && source .venv/bin/activate

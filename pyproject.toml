@@ -50,6 +50,9 @@ dependencies = [
     "Pillow>=10.0.0",
 ]
 
+[project.optional-dependencies]
+macos = ["pyobjc-framework-Cocoa>=10.0"]
+
 [project.urls]
 Homepage = "https://github.com/zacharytgray/MeetingScribe"
 Repository = "https://github.com/zacharytgray/MeetingScribe"
@@ -58,6 +61,7 @@ Repository = "https://github.com/zacharytgray/MeetingScribe"
 [project.scripts]
 meetingscribe = "meetingscribe.cli_entry:main"
 meetingscribe-tray = "meetingscribe.cli_entry:tray_main"
+meetingscribe-app = "meetingscribe.cli_entry:app_main"
 
 [tool.setuptools.packages.find]
 where = ["."]

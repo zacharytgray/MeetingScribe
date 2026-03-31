@@ -222,6 +222,27 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   echo "    export PATH=\"$BIN_DIR:\$PATH\""
 fi
 
+# ---------------------------------------------------------------------------
+# 7. Build and install MeetingScribe.app
+# ---------------------------------------------------------------------------
+echo
+echo "[*] Building MeetingScribe.app..."
+
+# generate icon if needed
+if [ ! -f "$REPO_DIR/assets/AppIcon.icns" ]; then
+  echo "    Generating app icon..."
+  "$VENV_DIR/bin/python" "$REPO_DIR/scripts/generate_icon.py" 2>/dev/null || echo "    (icon generation skipped)"
+fi
+
+"$REPO_DIR/scripts/build_app.sh" --install
+
 echo
 echo "=== Installation complete ==="
-echo "Run 'meetingscribe setup' to configure API keys and audio device."
+echo
+echo "  Launch MeetingScribe from Spotlight, /Applications, or the command line."
+echo "  First launch will open Preferences — configure your API keys and audio."
+echo
+echo "  CLI commands are also available:"
+echo "    meetingscribe setup     — interactive terminal setup"
+echo "    meetingscribe start     — start a recording session"
+echo "    meetingscribe devices   — list audio devices"

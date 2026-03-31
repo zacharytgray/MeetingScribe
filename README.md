@@ -22,7 +22,8 @@
 - **Driver-free audio on macOS 14.2+** — uses CoreAudio Taps via [audiotee](https://github.com/makeusabrew/audiotee); no BlackHole, no Audio MIDI Setup, volume control works normally
 - **Works with any meeting app** — captures system audio; no integrations or plugins needed
 - **macOS and Linux** support
-- **System tray app** for menu-bar control, or use the CLI directly
+- **Native macOS app** with toolbar-based preferences, menu bar control, and live transcript viewer — or use the CLI directly
+- **System tray app** (pystray) for Linux and as a cross-platform fallback
 
 ---
 
@@ -87,8 +88,8 @@ meetingscribe setup
 ```
 
 Both installer scripts create `meetingscribe` and `meetingscribe-tray` launchers in `~/.local/bin`.
+On macOS, the installer also builds and installs `MeetingScribe.app` to `/Applications` (a thin ~140 KB shell wrapper that launches the managed venv) and registers it with Spotlight.
 Those wrappers resolve the venv from `$HOME/.meetingscribe/venv` at runtime, and if `~/.local/bin` is not already on `PATH`, the installer adds it to your shell startup file automatically.
-`meetingscribe ...` is the primary CLI interface and has the same behavior as running `python cli.py ...` from the project root; the wrapper just dispatches to the same code with the managed venv.
 
 `meetingscribe setup` does not install dependencies, create the venv, install launchers, or set up OS-level audio requirements. It only configures MeetingScribe after installation is complete.
 Do not run both the installer script and the manual install steps for the same setup unless you intentionally want two separate environments. Manual install is an alternative workflow, not an additional required step.
@@ -263,6 +264,22 @@ Skip summarization entirely — MeetingScribe saves the raw timestamped transcri
 
 ## Usage
 
+### macOS Native App
+
+On macOS, the installer builds a lightweight `.app` bundle and installs it to `/Applications`. Launch **MeetingScribe** from Spotlight, Launchpad, or the Applications folder.
+
+<p align="center">
+  <img src="assets/screenshot_summarization.png" alt="MeetingScribe Settings" width="420"/>
+</p>
+
+The app lives in your **menu bar** — click the mic icon to start/stop recording, view the live transcript, open notes, or adjust settings. The preferences window provides a toolbar-based UI for configuring output, audio devices, transcription, and AI providers.
+
+You can also launch the native app from the terminal:
+
+```bash
+meetingscribe-app
+```
+
 ### CLI
 
 ```bash
@@ -308,13 +325,13 @@ meetingscribe setup
 | `h` | Show help |
 | Ctrl+C | Fallback stop (same as `s`) |
 
-### System Tray App
+### System Tray App (Linux / cross-platform fallback)
 
 ```bash
 meetingscribe-tray
 ```
 
-A microphone icon appears in your menu bar (grey = idle, red = recording). Menu options: Start / Stop & Summarize / Show Live Transcript / Open Last Note / Open Notes Folder / Settings.
+A pystray-based microphone icon appears in your menu bar (grey = idle, red = recording). Menu options: Start / Stop & Summarize / Show Live Transcript / Open Last Note / Open Notes Folder / Settings. On macOS, prefer the native app above.
 
 ---
 
@@ -454,7 +471,7 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 - **In-person meetings not yet supported** — the current design assumes a loopback device for remote audio. Fully in-person meetings (everyone in the same room) would need mic-side diarization to split multiple voices from a single microphone
 - **Hybrid meetings not yet supported** — a mix of in-room and remote participants would require simultaneous diarization on both the loopback and mic streams with coordinated speaker labels
 - **Windows not supported** — WASAPI loopback could enable Windows support; no testing has been done
-- Installation requires manual Python environment setup; a `brew` formula or standalone app is planned
+- A `brew` formula for one-command installation is planned
 
 ---
 
@@ -463,10 +480,7 @@ Headphones eliminate the echo problem entirely and produce the cleanest transcri
 [`AGENTS.md`](AGENTS.md) contains a detailed description of the codebase — architecture, data flow, design decisions, configuration, and known issues. It is intended for:
 
 - **AI coding assistants** working on this repo (OpenAI Codex, Cursor, and others that read `AGENTS.md` natively)
-- **Claude Code** users: symlink it so Claude picks it up automatically:
-  ```bash
-  ln -s AGENTS.md CLAUDE.md
-  ```
+- **Claude Code** users: `CLAUDE.md` is already a symlink to `AGENTS.md` in this repo
 - **New contributors** who want a fast, structured overview of how everything fits together before diving into the code
 
 If you're opening a PR and using an AI assistant, pointing it at `AGENTS.md` first will give it the context it needs to work effectively.
