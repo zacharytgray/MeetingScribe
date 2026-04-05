@@ -51,19 +51,21 @@ class Transcriber {
 
         print("[Transcriber] downloading \(modelName) model from \(urlStr)")
 
-        let delegate = DownloadProgressDelegate(progress: progress)
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        defer { session.invalidateAndCancel() }
-
-        let (tempURL, response) = try await session.download(from: url)
-
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw TranscriberError.downloadFailed
+        let dest = modelPath
+        // use delegate-based download with continuation — avoids async API + delegate conflicts
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let delegate = DownloadProgressDelegate(
+                progress: progress,
+                destination: dest,
+                continuation: cont
+            )
+            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            delegate.session = session
+            session.downloadTask(with: url).resume()
         }
 
-        try FileManager.default.moveItem(at: tempURL, to: modelPath)
         progress(1.0)
-        print("[Transcriber] model saved to \(modelPath.path)")
+        print("[Transcriber] model saved to \(dest.path)")
     }
 
     // MARK: - transcription
@@ -80,8 +82,20 @@ class Transcriber {
         params.print_progress = false
         params.print_timestamps = false
 
+        // use most available cores for CPU-only inference
+        let cores = ProcessInfo.processInfo.activeProcessorCount
+        params.n_threads = Int32(max(cores - 1, 1))
+        print("[Transcriber] using \(params.n_threads) threads (of \(cores) cores)")
+
+        // warn about slow models on Intel (no CoreML/ANE acceleration)
+        #if !arch(arm64)
+        if modelName == "medium" || modelName == "large" {
+            print("[Transcriber] WARNING: \(modelName) model on Intel will be very slow — consider 'small' or 'base'")
+        }
+        #endif
+
         whisper = Whisper(fromFileURL: modelPath, withParams: params)
-        print("[Transcriber] loaded \(modelName) model")
+        print("[Transcriber] loaded \(modelName) model from \(modelPath.path)")
     }
 
     /// transcribe a WAV file, returns segments with times relative to chunk start
@@ -91,6 +105,8 @@ class Transcriber {
         }
 
         let frames = try Self.loadWAVAsFloat(url: wavURL)
+        print("[Transcriber] transcribing \(String(format: "%.1f", Double(frames.count) / 16000.0))s of audio")
+
         let segments = try await whisper.transcribe(audioFrames: frames)
 
         return segments.map { seg in
@@ -135,22 +151,68 @@ class Transcriber {
 
 private class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
     let progress: (Double) -> Void
+    let destination: URL
+    var session: URLSession?
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var resumed = false
 
-    init(progress: @escaping (Double) -> Void) {
+    // known model sizes (bytes) for progress when Content-Length missing after redirect
+    private static let expectedSizes: [String: Int64] = [
+        "ggml-tiny.en.bin": 77_691_713,
+        "ggml-base.en.bin": 147_951_465,
+        "ggml-small.en.bin": 487_601_967,
+        "ggml-medium.en.bin": 1_533_774_781,
+        "ggml-large-v3.bin": 3_094_623_691,
+    ]
+
+    init(progress: @escaping (Double) -> Void, destination: URL, continuation: CheckedContinuation<Void, Error>) {
         self.progress = progress
+        self.destination = destination
+        self.continuation = continuation
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
                     totalBytesExpectedToWrite: Int64) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        let pct = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        var total = totalBytesExpectedToWrite
+        // HF redirects can lose Content-Length — fall back to known sizes
+        if total <= 0 {
+            let filename = destination.lastPathComponent
+            total = Self.expectedSizes[filename] ?? 0
+        }
+        guard total > 0 else { return }
+        let pct = min(Double(totalBytesWritten) / Double(total), 0.99)
         DispatchQueue.main.async { self.progress(pct) }
     }
 
-    // required but unused — the async download(from:) handles the temp file
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didFinishDownloadingTo location: URL) {}
+                    didFinishDownloadingTo location: URL) {
+        do {
+            // remove any partial leftover from a previous attempt
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: location, to: destination)
+            resume(with: .success(()))
+        } catch {
+            resume(with: .failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        self.session?.invalidateAndCancel()
+        if let error {
+            resume(with: .failure(error))
+        }
+    }
+
+    private func resume(with result: Result<Void, Error>) {
+        guard !resumed else { return }
+        resumed = true
+        switch result {
+        case .success: continuation?.resume()
+        case .failure(let e): continuation?.resume(throwing: e)
+        }
+        continuation = nil
+    }
 }
 
 enum TranscriberError: LocalizedError {

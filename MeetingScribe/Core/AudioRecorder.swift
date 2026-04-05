@@ -17,6 +17,11 @@ class AudioRecorder {
     private var readThread: Thread?
     private var running = false
     private var elapsedSeconds: TimeInterval = 0
+    private let threadDone = DispatchSemaphore(value: 0)
+
+    // flush state — written by read thread, read by stop()
+    private var flushData: Data?
+    private var flushOffset: TimeInterval = 0
 
     // state file paths
     private static let stateDir = NSHomeDirectory() + "/.meetingscribe"
@@ -112,7 +117,8 @@ class AudioRecorder {
         self.readThread = thread
     }
 
-    func stop() {
+    /// stop recording and return any remaining buffered audio as a WAV file
+    func stop() -> (url: URL, offset: TimeInterval)? {
         running = false
 
         if readFD >= 0 {
@@ -120,11 +126,22 @@ class AudioRecorder {
             readFD = -1
         }
 
+        // wait for read thread to finish and store flush data (brief block, <50ms typical)
+        _ = threadDone.wait(timeout: .now() + 1.0)
+
+        // write flush chunk if the read thread left data
+        var result: (url: URL, offset: TimeInterval)? = nil
+        if let data = flushData, data.count >= Self.bytesPerSample, !Self.isChunkSilent(data) {
+            if let url = writeWAV(data) {
+                result = (url, flushOffset)
+            }
+        }
+        flushData = nil
+
         if childPID > 0 {
             let pid = childPID
             childPID = -1
             kill(pid, SIGTERM)
-            // reap on background thread to avoid blocking UI
             DispatchQueue.global(qos: .utility).async {
                 var status: Int32 = 0
                 waitpid(pid, &status, 0)
@@ -132,6 +149,7 @@ class AudioRecorder {
         }
 
         Self.removeStateFiles()
+        return result
     }
 
     static func cleanupOrphans() {
@@ -170,19 +188,34 @@ class AudioRecorder {
         rc = posix_spawn_file_actions_adddup2(&actions, stdoutFD, STDOUT_FILENO)
         guard rc == 0 else { throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
 
-        let devnull = open("/dev/null", O_WRONLY)
-        defer { close(devnull) }
-        rc = posix_spawn_file_actions_adddup2(&actions, devnull, STDERR_FILENO)
-        guard rc == 0 else { throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
+        // capture stderr for diagnostics (audiotee outputs JSON logs there)
+        var stderrPipe: [Int32] = [0, 0]
+        guard pipe(&stderrPipe) == 0 else { throw AudioRecorderError.fifoCreationFailed }
+        rc = posix_spawn_file_actions_adddup2(&actions, stderrPipe[1], STDERR_FILENO)
+        guard rc == 0 else { close(stderrPipe[0]); close(stderrPipe[1]); throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
+        rc = posix_spawn_file_actions_addclose(&actions, stderrPipe[0])
+        guard rc == 0 else { close(stderrPipe[0]); close(stderrPipe[1]); throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
 
-        // build argv: [binary, --sample-rate, 16000, NULL]
-        let args = [binary, "--sample-rate", "16000"]
+        // build argv — --flush prevents stdout buffering over FIFO
+        let args = [binary, "--sample-rate", "16000", "--flush"]
         let argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
         defer { for case let arg? in argv { free(arg) } }
 
         var pid: pid_t = 0
         rc = posix_spawn(&pid, binary, &actions, &attr, argv, environ)
-        guard rc == 0 else { throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
+        guard rc == 0 else { close(stderrPipe[0]); close(stderrPipe[1]); throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
+
+        close(stderrPipe[1]) // close write end in parent
+        // log audiotee stderr on background thread
+        let stderrFD = stderrPipe[0]
+        DispatchQueue.global(qos: .utility).async {
+            let fh = FileHandle(fileDescriptor: stderrFD, closeOnDealloc: true)
+            while let line = String(data: fh.availableData, encoding: .utf8), !line.isEmpty {
+                for part in line.split(separator: "\n") {
+                    print("[audiotee] \(part)")
+                }
+            }
+        }
 
         print("[AudioRecorder] spawned audiotee pid=\(pid) with own process group")
         return pid
@@ -203,6 +236,8 @@ class AudioRecorder {
         var chunkBuffer = Data(capacity: bytesPerChunk)
         var leftover = Data()  // byte alignment carry
         var silentBlocks = 0
+        var totalBytesRead = 0
+        var eofCount = 0
 
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: blockSize)
         defer { readBuf.deallocate() }
@@ -210,9 +245,19 @@ class AudioRecorder {
         while running {
             let n = read(readFD, readBuf, blockSize)
             guard n > 0 else {
-                if n == 0 { usleep(10_000); continue }  // eof, brief wait
-                break  // error
+                if n == 0 {
+                    eofCount += 1
+                    if eofCount == 1 {
+                        print("[AudioRecorder] EOF on FIFO — audiotee may have exited")
+                    }
+                    usleep(10_000)
+                    continue
+                }
+                break  // read error (fd closed by stop())
             }
+
+            eofCount = 0
+            totalBytesRead += n
 
             var data = leftover + Data(bytes: readBuf, count: n)
             leftover = Data()
@@ -227,8 +272,8 @@ class AudioRecorder {
             let isSilent = Self.isSilent(data)
             if isSilent { silentBlocks += 1 } else { silentBlocks = 0 }
 
-            if silentBlocks > 0 && silentBlocks % Int(15.0 / Self.blockDuration) == 0 {
-                print("[AudioRecorder] \(Int(Double(silentBlocks) * Self.blockDuration))s of silence — check audiotee TCC permission")
+            if silentBlocks > 0 && silentBlocks % Int(30.0 / Self.blockDuration) == 0 {
+                print("[AudioRecorder] \(Int(Double(silentBlocks) * Self.blockDuration))s of continuous silence")
             }
 
             chunkBuffer.append(data)
@@ -240,6 +285,8 @@ class AudioRecorder {
                     if let url = writeWAV(chunkBuffer) {
                         onChunk(url, elapsedSeconds)
                     }
+                } else {
+                    print("[AudioRecorder] dropping silent chunk at offset \(String(format: "%.0f", elapsedSeconds))s")
                 }
 
                 elapsedSeconds += duration
@@ -247,12 +294,13 @@ class AudioRecorder {
             }
         }
 
-        // flush remaining
-        if chunkBuffer.count >= Self.bytesPerSample && !Self.isChunkSilent(chunkBuffer) {
-            if let url = writeWAV(chunkBuffer) {
-                onChunk(url, elapsedSeconds)
-            }
+        // store remaining data for stop() to handle synchronously
+        if chunkBuffer.count >= Self.bytesPerSample {
+            flushData = chunkBuffer
+            flushOffset = elapsedSeconds
         }
+        print("[AudioRecorder] readLoop done — \(totalBytesRead) bytes read, \(chunkBuffer.count) bytes flushed")
+        threadDone.signal()
     }
 
     private static func isSilent(_ data: Data) -> Bool {

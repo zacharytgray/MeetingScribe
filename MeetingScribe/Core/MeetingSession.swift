@@ -111,12 +111,20 @@ class MeetingSession: ObservableObject {
         durationTimer?.invalidate()
         durationTimer = nil
 
-        recorder?.stop()
+        // stop recorders and collect flush chunks synchronously
+        let loopbackFlush = recorder?.stop()
         recorder = nil
-        micRecorder?.stop()
+        let micFlush = micRecorder?.stop()
         micRecorder = nil
 
-        print("[MeetingSession] stopped, \(pendingChunks.count) chunks total")
+        if let flush = loopbackFlush {
+            pendingChunks.append((url: flush.url, offset: flush.offset, source: .loopback))
+        }
+        if let flush = micFlush {
+            pendingChunks.append((url: flush.url, offset: flush.offset, source: .mic))
+        }
+
+        print("[MeetingSession] stopped, \(pendingChunks.count) chunks queued")
 
         // transcribe any remaining chunks
         if transcriber != nil && !pendingChunks.isEmpty {
@@ -221,6 +229,7 @@ class MeetingSession: ObservableObject {
                 segments.append(contentsOf: adjusted)
                 transcribedCount = idx + 1
                 transcriptionProgress = "\(transcribedCount)/\(pendingChunks.count) chunks"
+                print("[MeetingSession] chunk \(idx) done — \(newSegments.count) segments")
 
                 try? FileManager.default.removeItem(at: chunk.url)
             } catch {

@@ -87,25 +87,26 @@ class MicRecorder {
         print("[MicRecorder] started")
     }
 
-    func stop() {
+    /// stop recording and return any remaining buffered audio as a WAV file
+    func stop() -> (url: URL, offset: TimeInterval)? {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
 
-        // flush remaining
         bufferLock.lock()
         let remaining = chunkBuffer
         let offset = elapsedSeconds
         chunkBuffer = Data()
         bufferLock.unlock()
 
+        print("[MicRecorder] stopped")
+
         if remaining.count >= Self.bytesPerSample && !Self.isSilent(remaining) {
             if let url = Self.writeWAV(remaining, sampleRate: Int(Self.sampleRate)) {
-                onChunk(url, offset)
+                return (url, offset)
             }
         }
-
-        print("[MicRecorder] stopped")
+        return nil
     }
 
     // MARK: - private
