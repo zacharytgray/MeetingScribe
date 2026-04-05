@@ -1,14 +1,25 @@
 <?xml version="1.0" standalone="yes"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>MeetingScribe</title>
         <item>
+            <title>2.0.1</title>
+            <pubDate>Sat, 04 Apr 2026 23:45:47 -0500</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>2.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.0.1/MeetingScribe-2.0.1.dmg" length="2657002" type="application/octet-stream" sparkle:edSignature="UqESMbvtkQeaRsKf9OqlcqWMbMI3fkIeSqTbCu61zo+KyCnyFHAIOpQi54ym2kSjeGnMMOjW7EzInOhAUQwyAA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.0.1/MeetingScribe2-1.delta" sparkle:deltaFrom="1" length="52842" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977616" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="KnQKnG0/oPJXst3DMAPXBZVdPrvTsXmdCHE3/dChn8qZwVyJc3OkyGoiNr/Gehea8I9a9cKmO9CBuxQErQPCBQ=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>2.0.0</title>
-            <pubDate>Fri, 04 Apr 2026 22:57:00 -0500</pubDate>
+            <pubDate>Sat, 04 Apr 2026 22:57:42 -0500</pubDate>
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.0.0/MeetingScribe-2.0.0.dmg" length="2941091" type="application/octet-stream"/>
+            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.0.1/MeetingScribe-2.0.0.dmg" length="2941091" type="application/octet-stream" sparkle:edSignature="ob7QnLGn6dk+8RGqQbhfGDmY3bBmK3TiCJ0LpQbkepdVTZdG9bF9U7V+kK340gAspThE7dxr5XtmgwtEZu+/BA=="/>
         </item>
     </channel>
 </rss>
