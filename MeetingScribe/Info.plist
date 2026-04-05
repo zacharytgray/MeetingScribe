@@ -20,5 +20,9 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>SUFeedURL</key>
+	<string>https://zacharytgray.github.io/MeetingScribe/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>KkgY2mwxJqYpownyAbQD46066OdfcU8VFA+EUokHwpY=</string>
 </dict>
 </plist>

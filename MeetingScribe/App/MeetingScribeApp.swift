@@ -1,17 +1,21 @@
 import SwiftUI
+import Sparkle
 
 @main
 struct MeetingScribeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.openWindow) private var openWindow
 
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil
+    )
+
     var body: some Scene {
         MenuBarExtra {
-            MenuBarView()
+            MenuBarView(updater: updaterController.updater)
                 .environmentObject(appDelegate.session)
                 .environmentObject(appDelegate.projectManager)
                 .task {
-                    // auto-show setup on first launch if prerequisites missing
                     if appDelegate.needsSetup {
                         openWindow(id: "setup")
                         NSApp.activate(ignoringOtherApps: true)

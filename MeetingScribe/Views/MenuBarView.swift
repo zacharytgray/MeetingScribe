@@ -1,9 +1,12 @@
 import SwiftUI
+import Sparkle
 
 struct MenuBarView: View {
     @EnvironmentObject var session: MeetingSession
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(\.openWindow) private var openWindow
+
+    let updater: SPUUpdater
 
     @State private var newProjectName = ""
     @State private var showingNewProject = false
@@ -140,6 +143,10 @@ struct MenuBarView: View {
                 Label("Settings…", systemImage: "gear")
             }
             .keyboardShortcut(",", modifiers: .command)
+
+            Button(action: { updater.checkForUpdates() }) {
+                Label("Check for Updates…", systemImage: "arrow.clockwise.circle")
+            }
 
             Button(action: { NSApp.terminate(nil) }) {
                 Label("Quit", systemImage: "power")

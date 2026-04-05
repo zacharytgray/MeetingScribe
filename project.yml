@@ -23,6 +23,9 @@ packages:
   SwiftWhisper:
     url: https://github.com/exPHAT/SwiftWhisper
     from: "1.0.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 targets:
   MeetingScribe:
@@ -32,6 +35,7 @@ targets:
       - MeetingScribe
     dependencies:
       - package: SwiftWhisper
+      - package: Sparkle
     settings:
       base:
         INFOPLIST_FILE: MeetingScribe/Info.plist
