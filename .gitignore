@@ -6,5 +6,6 @@ DerivedData/
 *.swp
 *.DS_Store
 xcuserdata/
+dist/
 CLAUDE.md
 REWRITE_PLAN.md
