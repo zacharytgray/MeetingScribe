@@ -10,6 +10,7 @@ class AudioRecorder {
     static let silenceThreshold: Float = 0.001
 
     private let chunkSeconds: Int
+    private let outputDir: URL
     private let onChunk: (URL, TimeInterval) -> Void  // (wav path, chunk start offset)
 
     private var childPID: pid_t = -1
@@ -28,8 +29,9 @@ class AudioRecorder {
     private static let fifoPath = stateDir + "/audiotee.fifo"
     private static let pidPath = stateDir + "/audiotee.pid"
 
-    init(chunkSeconds: Int = 30, onChunk: @escaping (URL, TimeInterval) -> Void) {
+    init(chunkSeconds: Int = 30, outputDir: URL, onChunk: @escaping (URL, TimeInterval) -> Void) {
         self.chunkSeconds = chunkSeconds
+        self.outputDir = outputDir
         self.onChunk = onChunk
     }
 
@@ -318,8 +320,7 @@ class AudioRecorder {
     }
 
     private func writeWAV(_ pcmData: Data) -> URL? {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("meetingscribe_\(ProcessInfo.processInfo.processIdentifier)")
+        let dir = outputDir.appendingPathComponent("loopback")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let filename = String(format: "chunk_%.1f.wav", elapsedSeconds)

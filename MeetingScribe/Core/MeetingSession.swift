@@ -12,6 +12,7 @@ class MeetingSession: ObservableObject {
 
     private var config: AppConfig
     private var projectURL: URL?
+    private var sessionRecordingsDir: URL?
     private var recorder: AudioRecorder?
     private var micRecorder: MicRecorder?
     private var transcriber: Transcriber?
@@ -25,20 +26,22 @@ class MeetingSession: ObservableObject {
     private var transcribedCount = 0
     private var isTranscribing = false
 
+    // persistent recordings dir for raw audio preservation
+    static let recordingsBaseDir: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MeetingScribe/recordings")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     init(config: AppConfig) {
         self.config = config
     }
 
-    // MARK: - model management
+    // MARK: - token check
 
-    var isModelReady: Bool {
-        let t = Transcriber(modelName: config.whisperModel)
-        return t.isModelDownloaded
-    }
-
-    func downloadModel(progress: @escaping (Double) -> Void) async throws {
-        let t = Transcriber(modelName: config.whisperModel)
-        try await t.downloadModel(progress: progress)
+    var isApiKeyConfigured: Bool {
+        config.resolvedGroqApiKey != nil
     }
 
     // MARK: - recording
@@ -54,18 +57,27 @@ class MeetingSession: ObservableObject {
         self.transcriptionProgress = ""
         self.claudeStatus = .idle
 
-        // load whisper model
-        let transcriber = Transcriber(modelName: config.whisperModel)
-        if transcriber.isModelDownloaded {
-            try transcriber.loadModel()
-            self.transcriber = transcriber
+        // create session recordings directory for raw audio preservation
+        let dateStr: String = {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            return f.string(from: Date())
+        }()
+        let sessionDir = Self.recordingsBaseDir.appendingPathComponent(dateStr)
+        try? FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        self.sessionRecordingsDir = sessionDir
+        print("[MeetingSession] raw audio will be saved to \(sessionDir.path)")
+
+        // init transcriber with HF token
+        if let apiKey = config.resolvedGroqApiKey {
+            self.transcriber = Transcriber(apiKey: apiKey)
         } else {
-            print("[MeetingSession] model not downloaded, transcription will be skipped")
+            print("[MeetingSession] no Groq API key, transcription will be skipped")
             self.transcriber = nil
         }
 
         // start system audio capture
-        let recorder = AudioRecorder(chunkSeconds: config.chunkSeconds) { [weak self] url, offset in
+        let recorder = AudioRecorder(chunkSeconds: config.chunkSeconds, outputDir: sessionDir) { [weak self] url, offset in
             DispatchQueue.main.async {
                 self?.handleChunk(url: url, offset: offset, source: .loopback)
             }
@@ -75,7 +87,7 @@ class MeetingSession: ObservableObject {
 
         // start mic capture if enabled
         if config.micEnabled {
-            let mic = MicRecorder(chunkSeconds: config.chunkSeconds) { [weak self] url, offset in
+            let mic = MicRecorder(chunkSeconds: config.chunkSeconds, outputDir: sessionDir) { [weak self] url, offset in
                 DispatchQueue.main.async {
                     self?.handleChunk(url: url, offset: offset, source: .mic)
                 }
@@ -166,8 +178,15 @@ class MeetingSession: ObservableObject {
         let finalSegments: [TranscriptSegment]
         if config.micEnabled {
             finalSegments = EchoDedup.dedup(segments: segments, userName: config.userName)
+            if segments.count != finalSegments.count {
+                print("[MeetingSession] echo dedup: \(segments.count) → \(finalSegments.count) segments")
+            }
         } else {
             finalSegments = segments
+        }
+
+        if finalSegments.isEmpty {
+            print("[MeetingSession] WARNING: no segments to save — raw audio preserved at \(sessionRecordingsDir?.path ?? "unknown")")
         }
 
         var content = "## Raw Transcript\n\n"
@@ -230,8 +249,6 @@ class MeetingSession: ObservableObject {
                 transcribedCount = idx + 1
                 transcriptionProgress = "\(transcribedCount)/\(pendingChunks.count) chunks"
                 print("[MeetingSession] chunk \(idx) done — \(newSegments.count) segments")
-
-                try? FileManager.default.removeItem(at: chunk.url)
             } catch {
                 print("[MeetingSession] transcription failed for chunk \(idx): \(error)")
                 transcribedCount = idx + 1
@@ -249,7 +266,6 @@ class MeetingSession: ObservableObject {
 
     private func finishSession() {
         let url = saveTranscript()
-        transcriber?.unloadModel()
         transcriber = nil
         transcriptionProgress = ""
 

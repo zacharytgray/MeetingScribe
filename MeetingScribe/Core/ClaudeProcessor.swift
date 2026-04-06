@@ -45,13 +45,12 @@ class ClaudeProcessor {
 
         Your tasks:
         1. Add a polished summary section at the TOP of the transcript file (keep raw transcript below under a "## Raw Transcript" heading)
-        2. Extract action items from the meeting. For each action item, create a Todoist task with:
+        2. Extract action items from the meeting. First create a parent Todoist task named "Meeting: <title> (YYYY-MM-DD)", then create each action item as a sub-task under it with:
            - Clear, actionable title
            - Appropriate priority (p1=urgent, p2=important, p3=normal, p4=low)
            - Due date if mentioned or inferable
            - Description with relevant context
-        3. Check my Google Calendar for mentioned meetings or follow-ups. Note conflicts or suggest times.
-        4. Generate a detailed action plan at \(planPath.path) with:
+        3. Generate a detailed action plan at \(planPath.path) with:
            - Each action item with full context
            - Relevant file paths, repos, or resources mentioned
            - Source transcript path for reference
@@ -63,11 +62,15 @@ class ClaudeProcessor {
 
         var args = [
             "-p", prompt,
-            "--allowedTools", "Read,Write,Edit,Bash(ls *),Bash(cat *),mcp__*todoist*,mcp__*gcal*,mcp__*notion*",
+            "--allowedTools", "Read,Write,Edit,Bash(ls *),Bash(cat *),mcp__todoist__*,mcp__vault__*",
             "--permission-mode", "acceptEdits",
             "--output-format", "json",
             "--max-turns", "15"
         ]
+
+        if let model = config.claudeModel, !model.isEmpty {
+            args.append(contentsOf: ["--model", model])
+        }
 
         // read skill file and append as system prompt context
         if let skillContent = try? String(contentsOfFile: skillPath, encoding: .utf8) {

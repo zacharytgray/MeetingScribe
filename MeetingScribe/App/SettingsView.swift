@@ -7,16 +7,19 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Transcription") {
-                Picker("Whisper Model", selection: $config.whisperModel) {
-                    Text("tiny").tag("tiny")
-                    Text("base").tag("base")
-                    Text("small").tag("small")
-                    Text("medium").tag("medium")
-                    Text("large").tag("large")
+                SecureField("Groq API Key", text: Binding(
+                    get: { config.groqApiKey ?? "" },
+                    set: { config.groqApiKey = $0.isEmpty ? nil : $0 }
+                ))
+                if config.resolvedGroqApiKey != nil {
+                    Label("API key configured", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                } else {
+                    Text("Get a free key at console.groq.com/keys")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Larger models are more accurate but slower")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Microphone") {

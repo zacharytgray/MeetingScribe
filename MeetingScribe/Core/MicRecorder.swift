@@ -4,6 +4,7 @@ import AVFoundation
 // captures mic audio via AVAudioEngine, outputs chunked WAV files
 class MicRecorder {
     private let chunkSeconds: Int
+    private let outputDir: URL
     private let onChunk: (URL, TimeInterval) -> Void
 
     private var engine: AVAudioEngine?
@@ -15,8 +16,9 @@ class MicRecorder {
     private static let sampleRate: Double = 16000
     private static let bytesPerSample = 2
 
-    init(chunkSeconds: Int = 30, onChunk: @escaping (URL, TimeInterval) -> Void) {
+    init(chunkSeconds: Int = 30, outputDir: URL, onChunk: @escaping (URL, TimeInterval) -> Void) {
         self.chunkSeconds = chunkSeconds
+        self.outputDir = outputDir
         self.onChunk = onChunk
     }
 
@@ -73,7 +75,7 @@ class MicRecorder {
                 self.bufferLock.unlock()
 
                 if !Self.isSilent(chunk) {
-                    if let url = Self.writeWAV(Data(chunk), sampleRate: Int(Self.sampleRate)) {
+                    if let url = self.writeWAV(Data(chunk), sampleRate: Int(Self.sampleRate)) {
                         self.onChunk(url, offset)
                     }
                 }
@@ -102,7 +104,7 @@ class MicRecorder {
         print("[MicRecorder] stopped")
 
         if remaining.count >= Self.bytesPerSample && !Self.isSilent(remaining) {
-            if let url = Self.writeWAV(remaining, sampleRate: Int(Self.sampleRate)) {
+            if let url = self.writeWAV(remaining, sampleRate: Int(Self.sampleRate)) {
                 return (url, offset)
             }
         }
@@ -133,12 +135,11 @@ class MicRecorder {
         }
     }
 
-    private static func writeWAV(_ pcmData: Data, sampleRate: Int) -> URL? {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("meetingscribe_mic_\(ProcessInfo.processInfo.processIdentifier)")
+    private func writeWAV(_ pcmData: Data, sampleRate: Int) -> URL? {
+        let dir = outputDir.appendingPathComponent("mic")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let filename = String(format: "mic_%.1f.wav", Date().timeIntervalSince1970)
+        let filename = String(format: "mic_%.1f.wav", elapsedSeconds)
         let url = dir.appendingPathComponent(filename)
 
         var header = Data()
@@ -153,8 +154,8 @@ class MicRecorder {
         header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })   // PCM
         header.append(withUnsafeBytes(of: UInt16(1).littleEndian) { Data($0) })   // mono
         header.append(withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: UInt32(sampleRate * bytesPerSample).littleEndian) { Data($0) })
-        header.append(withUnsafeBytes(of: UInt16(bytesPerSample).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: UInt32(sampleRate * Self.bytesPerSample).littleEndian) { Data($0) })
+        header.append(withUnsafeBytes(of: UInt16(Self.bytesPerSample).littleEndian) { Data($0) })
         header.append(withUnsafeBytes(of: UInt16(16).littleEndian) { Data($0) })
         header.append(contentsOf: "data".utf8)
         header.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })

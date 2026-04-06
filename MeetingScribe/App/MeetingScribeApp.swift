@@ -36,10 +36,7 @@ struct MeetingScribeApp: App {
             SetupView(
                 audioteeInstalled: AudioRecorder.isAudioteeInstalled,
                 claudeInstalled: ClaudeProcessor.isClaudeInstalled,
-                modelReady: appDelegate.session.isModelReady,
-                onDownloadModel: { progress in
-                    try await appDelegate.session.downloadModel(progress: progress)
-                },
+                apiKeyConfigured: appDelegate.session.isApiKeyConfigured,
                 onDismiss: {
                     NSApp.keyWindow?.close()
                 }

@@ -20,9 +20,6 @@ schemes:
       config: Debug
 
 packages:
-  SwiftWhisper:
-    url: https://github.com/exPHAT/SwiftWhisper
-    from: "1.0.0"
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.6.0"
@@ -34,14 +31,13 @@ targets:
     sources:
       - MeetingScribe
     dependencies:
-      - package: SwiftWhisper
       - package: Sparkle
     settings:
       base:
         INFOPLIST_FILE: MeetingScribe/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.zacharytgray.MeetingScribe
-        MARKETING_VERSION: "2.0.2"
-        CURRENT_PROJECT_VERSION: "4"
+        MARKETING_VERSION: "2.1.0"
+        CURRENT_PROJECT_VERSION: "5"
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)

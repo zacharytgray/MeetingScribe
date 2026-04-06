@@ -4,12 +4,8 @@ import SwiftUI
 struct SetupView: View {
     var audioteeInstalled: Bool
     var claudeInstalled: Bool
-    var modelReady: Bool
-    var onDownloadModel: (@escaping (Double) -> Void) async throws -> Void
+    var apiKeyConfigured: Bool
     var onDismiss: () -> Void
-
-    @State private var downloadProgress: Double? = nil
-    @State private var downloadError: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -28,40 +24,28 @@ struct SetupView: View {
                 help: "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
             )
 
-            // whisper model
+            // groq api key
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Image(systemName: modelReady ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(modelReady ? .green : .red)
-                    Text("Whisper model")
+                    Image(systemName: apiKeyConfigured ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(apiKeyConfigured ? .green : .red)
+                    Text("Groq API key")
                         .fontWeight(.medium)
-                    if modelReady {
-                        Text("downloaded")
+                    if apiKeyConfigured {
+                        Text("configured")
                             .foregroundStyle(.secondary)
                     }
                 }
-                if !modelReady {
-                    if let progress = downloadProgress {
-                        HStack {
-                            ProgressView(value: progress)
-                                .frame(maxWidth: 200)
-                            Text("\(Int(progress * 100))%")
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Button("Download Model") { downloadModel() }
-                    }
-                    if let downloadError {
-                        Text(downloadError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                if !apiKeyConfigured {
+                    Text("Get a free key at console.groq.com/keys, or add GROQ_API_KEY to ~/OpenClaude/Secrets/.env")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
             }
 
             if !audioteeInstalled {
-                Text("After installing audiotee, grant it Screen & System Audio Recording permission in System Settings → Privacy & Security.")
+                Text("After installing audiotee, grant it Screen & System Audio Recording permission in System Settings \u{2192} Privacy & Security.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -75,7 +59,7 @@ struct SetupView: View {
             }
         }
         .padding(24)
-        .frame(width: 480, height: 360)
+        .frame(width: 480, height: 320)
     }
 
     private func prerequisiteRow(_ name: String, installed: Bool, help: String) -> some View {
@@ -95,23 +79,6 @@ struct SetupView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-            }
-        }
-    }
-
-    private func downloadModel() {
-        guard downloadProgress == nil else { return }
-        downloadProgress = 0
-        downloadError = nil
-        Task {
-            do {
-                try await onDownloadModel { pct in
-                    downloadProgress = pct
-                }
-                downloadProgress = nil
-            } catch {
-                downloadProgress = nil
-                downloadError = error.localizedDescription
             }
         }
     }

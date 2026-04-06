@@ -10,7 +10,6 @@ struct MenuBarView: View {
 
     @State private var newProjectName = ""
     @State private var showingNewProject = false
-    @State private var downloadProgress: Double? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -47,21 +46,8 @@ struct MenuBarView: View {
 
             Divider()
 
-            // model download
-            if let progress = downloadProgress {
-                HStack {
-                    ProgressView(value: progress)
-                        .frame(maxWidth: .infinity)
-                    Text("\(Int(progress * 100))%")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-                Text("Downloading whisper model…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             // record / stop
-            else if session.state.isRecording {
+            if session.state.isRecording {
                 HStack {
                     Image(systemName: "record.circle.fill")
                         .foregroundStyle(.red)
@@ -115,10 +101,10 @@ struct MenuBarView: View {
                     EmptyView()
                 }
 
-                if !session.isModelReady {
-                    Button(action: { downloadModel() }) {
-                        Label("Download Whisper Model", systemImage: "arrow.down.circle")
-                    }
+                if !session.isApiKeyConfigured {
+                    Label("Groq API key not configured", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
                 }
 
                 Button(action: { startRecording() }) {
@@ -163,22 +149,6 @@ struct MenuBarView: View {
             try session.startRecording(projectURL: url)
         } catch {
             print("[MenuBarView] failed to start: \(error)")
-        }
-    }
-
-    private func downloadModel() {
-        guard downloadProgress == nil else { return }
-        downloadProgress = 0
-        Task {
-            do {
-                try await session.downloadModel { pct in
-                    downloadProgress = pct
-                }
-                downloadProgress = nil
-            } catch {
-                print("[MenuBarView] model download failed: \(error)")
-                downloadProgress = nil
-            }
         }
     }
 

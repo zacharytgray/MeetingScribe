@@ -9,7 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var needsSetup: Bool {
         !AudioRecorder.isAudioteeInstalled
             || !ClaudeProcessor.isClaudeInstalled
-            || !session.isModelReady
+            || !session.isApiKeyConfigured
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

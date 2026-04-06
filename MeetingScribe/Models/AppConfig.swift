@@ -1,7 +1,7 @@
 import Foundation
 
 struct AppConfig: Codable {
-    var whisperModel: String = "small"
+    var groqApiKey: String? = nil
     var micEnabled: Bool = false
     var micDeviceID: String? = nil
     var userName: String = "Me"
@@ -10,6 +10,24 @@ struct AppConfig: Codable {
     var meetingNotesRoot: String = "~/OpenClaude/Vault/Meeting Notes"
     var autoProcess: Bool = true
     var claudePath: String? = nil
+    var claudeModel: String? = nil  // e.g. "sonnet", "opus", "claude-sonnet-4-20250514"
+
+    // resolve groq key: config first, then ~/OpenClaude/Secrets/.env fallback
+    var resolvedGroqApiKey: String? {
+        if let k = groqApiKey, !k.isEmpty { return k }
+        let envPath = NSString(string: "~/OpenClaude/Secrets/.env").expandingTildeInPath
+        guard let contents = try? String(contentsOfFile: envPath, encoding: .utf8) else { return nil }
+        for line in contents.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let stripped = trimmed.hasPrefix("export ") ? String(trimmed.dropFirst(7)) : trimmed
+            if stripped.hasPrefix("GROQ_API_KEY=") {
+                let value = String(stripped.dropFirst(13))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                if !value.isEmpty { return value }
+            }
+        }
+        return nil
+    }
 
     // resolved paths
     var resolvedNotesRoot: URL {
