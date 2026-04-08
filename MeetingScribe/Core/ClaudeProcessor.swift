@@ -40,6 +40,18 @@ class ClaudeProcessor {
 
         let skillPath = NSHomeDirectory() + "/OpenClaude/.claude/skills/meeting-processor.md"
 
+        let calendarTask: String
+        if config.calendarEnabled {
+            let calParam = config.calendarName.map { "&calendarName=\($0)" } ?? ""
+            calendarTask = """
+            4. Check if the transcript mentions a next meeting, follow-up, or recurring meeting time. If so, create a calendar event via Fantastical by running:
+               open "x-fantastical3://parse?sentence=<natural language event description including date, time, and duration>&add=1\(calParam)"
+               URL-encode the sentence parameter. Include the meeting title, date, start time, and end time (or duration) as naturally as possible. Only create an event if a specific date/time is mentioned or clearly inferable.
+            """
+        } else {
+            calendarTask = ""
+        }
+
         let prompt = """
         Read the meeting transcript at \(transcriptPath.path).
 
@@ -56,11 +68,7 @@ class ClaudeProcessor {
            - Source transcript path for reference
            - Suggested execution order and dependencies
            - Decisions made and rationale
-
-        4. Check if the transcript mentions a next meeting, follow-up, or recurring meeting time. If so, create a calendar event via Fantastical by running:
-           open "x-fantastical3://parse?sentence=<natural language event description including date, time, and duration>&add=1\(config.calendarName.map { "&calendarName=\($0)" } ?? "")"
-           URL-encode the sentence parameter. Include the meeting title, date, start time, and end time (or duration) as naturally as possible. Only create an event if a specific date/time is mentioned or clearly inferable.
-
+        \(calendarTask)
         Format the summary with: date, duration, participants (if identifiable), then 2-4 paragraph summary, then bulleted action items, then key decisions.
         """
 

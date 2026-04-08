@@ -56,6 +56,33 @@ struct SettingsView: View {
                 Toggle("Auto-process with Claude after recording", isOn: $config.autoProcess)
             }
 
+            Section("Integrations") {
+                SecureField("Todoist API Key", text: Binding(
+                    get: { config.todoistApiKey ?? "" },
+                    set: { config.todoistApiKey = $0.isEmpty ? nil : $0 }
+                ))
+                if config.resolvedTodoistApiKey != nil {
+                    Label("Todoist connected", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                } else {
+                    Text("Enables automatic task creation from meetings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle("Create calendar events for next meetings", isOn: $config.calendarEnabled)
+                if config.calendarEnabled {
+                    TextField("Calendar name (e.g. email)", text: Binding(
+                        get: { config.calendarName ?? "" },
+                        set: { config.calendarName = $0.isEmpty ? nil : $0 }
+                    ))
+                    Text("Events created via Fantastical")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             HStack {
                 Spacer()
                 if saved {

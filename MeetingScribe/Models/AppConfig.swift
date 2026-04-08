@@ -12,6 +12,8 @@ struct AppConfig: Codable {
     var claudePath: String? = nil
     var claudeModel: String? = nil  // e.g. "sonnet", "opus", "claude-sonnet-4-20250514"
     var calendarName: String? = nil  // fantastical calendar name for event creation
+    var calendarEnabled: Bool = true  // create calendar events for next meetings
+    var todoistApiKey: String? = nil  // synced to ~/.claude.json todoist MCP server
 
     // resolve groq key: config first, then ~/OpenClaude/Secrets/.env fallback
     var resolvedGroqApiKey: String? {
@@ -81,10 +83,48 @@ struct AppConfig: Codable {
         return config
     }
 
+    // resolve todoist key: config first, then ~/.claude.json MCP server fallback
+    var resolvedTodoistApiKey: String? {
+        if let k = todoistApiKey, !k.isEmpty { return k }
+        guard let json = Self.readClaudeJson(),
+              let servers = json["mcpServers"] as? [String: Any],
+              let todoist = servers["todoist"] as? [String: Any],
+              let env = todoist["env"] as? [String: String] else { return nil }
+        return env["TODOIST_API_TOKEN"]
+    }
+
     func save() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(self) else { return }
         try? data.write(to: Self.configURL, options: .atomic)
+        syncTodoistKeyToClaudeJson()
+    }
+
+    // sync todoist api key to ~/.claude.json so the MCP server picks it up
+    private func syncTodoistKeyToClaudeJson() {
+        guard let key = todoistApiKey, !key.isEmpty else { return }
+        let path = NSHomeDirectory() + "/.claude.json"
+        guard var json = Self.readClaudeJson() else { return }
+        var servers = json["mcpServers"] as? [String: Any] ?? [:]
+        var todoist = servers["todoist"] as? [String: Any] ?? [
+            "type": "stdio",
+            "command": "/usr/local/bin/npx",
+            "args": ["-y", "@greirson/mcp-todoist"]
+        ]
+        var env = todoist["env"] as? [String: String] ?? ["PATH": "/usr/local/bin:/usr/bin:/bin"]
+        env["TODOIST_API_TOKEN"] = key
+        todoist["env"] = env
+        servers["todoist"] = todoist
+        json["mcpServers"] = servers
+        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+    }
+
+    private static func readClaudeJson() -> [String: Any]? {
+        let path = NSHomeDirectory() + "/.claude.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json
     }
 }
