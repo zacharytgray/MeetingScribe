@@ -11,6 +11,7 @@ struct AppConfig: Codable {
     var autoProcess: Bool = true
     var claudePath: String? = nil
     var claudeModel: String? = nil  // e.g. "sonnet", "opus", "claude-sonnet-4-20250514"
+    var calendarName: String? = nil  // fantastical calendar name for event creation
 
     // resolve groq key: config first, then ~/OpenClaude/Secrets/.env fallback
     var resolvedGroqApiKey: String? {

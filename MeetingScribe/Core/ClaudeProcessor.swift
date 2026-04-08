@@ -57,12 +57,16 @@ class ClaudeProcessor {
            - Suggested execution order and dependencies
            - Decisions made and rationale
 
+        4. Check if the transcript mentions a next meeting, follow-up, or recurring meeting time. If so, create a calendar event via Fantastical by running:
+           open "x-fantastical3://parse?sentence=<natural language event description including date, time, and duration>&add=1\(config.calendarName.map { "&calendarName=\($0)" } ?? "")"
+           URL-encode the sentence parameter. Include the meeting title, date, start time, and end time (or duration) as naturally as possible. Only create an event if a specific date/time is mentioned or clearly inferable.
+
         Format the summary with: date, duration, participants (if identifiable), then 2-4 paragraph summary, then bulleted action items, then key decisions.
         """
 
         var args = [
             "-p", prompt,
-            "--allowedTools", "Read,Write,Edit,Bash(ls *),Bash(cat *),mcp__todoist__*,mcp__vault__*",
+            "--allowedTools", "Read,Write,Edit,Bash(ls *),Bash(cat *),Bash(open *),mcp__todoist__*,mcp__vault__*",
             "--permission-mode", "acceptEdits",
             "--output-format", "json",
             "--max-turns", "15"
