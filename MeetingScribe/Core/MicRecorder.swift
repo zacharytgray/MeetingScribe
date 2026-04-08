@@ -23,6 +23,19 @@ class MicRecorder {
     }
 
     func start() throws {
+        // ensure mic permission before accessing inputNode
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .notDetermined:
+            // synchronously block to request — first launch only
+            let sem = DispatchSemaphore(value: 0)
+            AVCaptureDevice.requestAccess(for: .audio) { _ in sem.signal() }
+            sem.wait()
+        case .denied, .restricted:
+            print("[MicRecorder] microphone permission denied")
+            throw MicRecorderError.formatError
+        default: break
+        }
+
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let nativeFormat = input.outputFormat(forBus: 0)
@@ -103,7 +116,8 @@ class MicRecorder {
 
         print("[MicRecorder] stopped")
 
-        if remaining.count >= Self.bytesPerSample && !Self.isSilent(remaining) {
+        // no silence filter on flush — short recordings would be lost entirely
+        if remaining.count >= Self.bytesPerSample {
             if let url = self.writeWAV(remaining, sampleRate: Int(Self.sampleRate)) {
                 return (url, offset)
             }

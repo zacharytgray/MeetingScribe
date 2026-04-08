@@ -132,8 +132,9 @@ class AudioRecorder {
         _ = threadDone.wait(timeout: .now() + 1.0)
 
         // write flush chunk if the read thread left data
+        // no silence filter here — short recordings would be lost entirely
         var result: (url: URL, offset: TimeInterval)? = nil
-        if let data = flushData, data.count >= Self.bytesPerSample, !Self.isChunkSilent(data) {
+        if let data = flushData, data.count >= Self.bytesPerSample {
             if let url = writeWAV(data) {
                 result = (url, flushOffset)
             }
@@ -144,9 +145,16 @@ class AudioRecorder {
             let pid = childPID
             childPID = -1
             kill(pid, SIGTERM)
-            DispatchQueue.global(qos: .utility).async {
-                var status: Int32 = 0
-                waitpid(pid, &status, 0)
+            // wait for exit before removing pid file so cleanupOrphans can find it if we crash
+            var status: Int32 = 0
+            let waited = waitpid(pid, &status, WNOHANG)
+            if waited == 0 {
+                // still alive, give it a moment then force kill
+                usleep(200_000)
+                if waitpid(pid, &status, WNOHANG) == 0 {
+                    kill(pid, SIGKILL)
+                    waitpid(pid, &status, 0)
+                }
             }
         }
 
@@ -155,12 +163,23 @@ class AudioRecorder {
     }
 
     static func cleanupOrphans() {
+        // try pid file first
         if let pidStr = try? String(contentsOfFile: pidPath, encoding: .utf8),
            let pid = Int32(pidStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
             kill(pid, SIGTERM)
             usleep(100_000)
             kill(pid, SIGKILL)
         }
+
+        // fallback: kill any audiotee processes we missed (e.g. pid file was removed but process survived)
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "audiotee.*--sample-rate"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+        task.waitUntilExit()
+
         removeStateFiles()
     }
 
@@ -198,8 +217,7 @@ class AudioRecorder {
         rc = posix_spawn_file_actions_addclose(&actions, stderrPipe[0])
         guard rc == 0 else { close(stderrPipe[0]); close(stderrPipe[1]); throw POSIXError(POSIXErrorCode(rawValue: rc)!) }
 
-        // build argv — --flush prevents stdout buffering over FIFO
-        let args = [binary, "--sample-rate", "16000", "--flush"]
+        let args = [binary, "--sample-rate", "16000"]
         let argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
         defer { for case let arg? in argv { free(arg) } }
 
