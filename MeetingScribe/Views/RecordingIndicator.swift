@@ -9,8 +9,10 @@ struct RecordingIndicator: View {
             Image(systemName: "mic.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.red)
-        case .transcribing, .processing:
-            Image(systemName: "mic.badge.ellipsis")
+        case .transcribing:
+            Image(systemName: "waveform")
+        case .processing:
+            Image(systemName: "brain.head.profile")
         default:
             Image(systemName: "mic.fill")
         }
