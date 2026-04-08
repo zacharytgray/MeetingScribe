@@ -12,6 +12,10 @@ struct MenuBarView: View {
     @State private var showingNewProject = false
     @State private var newParticipant = ""
     @State private var showingParticipants = false
+    @State private var newRepo = ""
+    @State private var showingRepos = false
+    @State private var newResource = ""
+    @State private var showingResources = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -88,6 +92,92 @@ struct MenuBarView: View {
                         Button("Add") { addParticipant() }
                             .font(.caption)
                             .disabled(newParticipant.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+
+                // repos
+                HStack {
+                    Text("Repos")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Spacer()
+                    Button(action: { showingRepos.toggle() }) {
+                        Image(systemName: showingRepos ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+
+                if showingRepos {
+                    ForEach(projectManager.projectMeta.repos, id: \.self) { repo in
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                            Text(repo)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button(action: { projectManager.removeRepo(repo) }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+
+                    HStack {
+                        TextField("~/path/to/repo", text: $newRepo)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .onSubmit { addRepo() }
+                        Button("Add") { addRepo() }
+                            .font(.caption)
+                            .disabled(newRepo.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+
+                // resources
+                HStack {
+                    Text("Resources")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    Spacer()
+                    Button(action: { showingResources.toggle() }) {
+                        Image(systemName: showingResources ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+
+                if showingResources {
+                    ForEach(projectManager.projectMeta.resources, id: \.self) { resource in
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                            Text(resource)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button(action: { projectManager.removeResource(resource) }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+
+                    HStack {
+                        TextField("~/Google Drive/Research/...", text: $newResource)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .onSubmit { addResource() }
+                        Button("Add") { addResource() }
+                            .font(.caption)
+                            .disabled(newResource.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
             }
@@ -213,6 +303,20 @@ struct MenuBarView: View {
         guard !name.isEmpty else { return }
         projectManager.addParticipant(name)
         newParticipant = ""
+    }
+
+    private func addRepo() {
+        let path = newRepo.trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else { return }
+        projectManager.addRepo(path)
+        newRepo = ""
+    }
+
+    private func addResource() {
+        let path = newResource.trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else { return }
+        projectManager.addResource(path)
+        newResource = ""
     }
 }
 

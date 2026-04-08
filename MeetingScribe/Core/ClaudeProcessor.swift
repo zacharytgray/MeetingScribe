@@ -161,26 +161,31 @@ class ClaudeProcessor {
             group.leave()
         }
 
-        // calendar agent (only if enabled)
+        // calendar + prep folder agent (only if calendar enabled)
         if config.calendarEnabled {
             group.enter()
             let calParam = config.calendarName.map { "&calendarName=\($0)" } ?? ""
+            let projectDirPath = transcriptPath.deletingLastPathComponent().path
             let calendarPrompt = """
             Read the meeting summary at \(transcriptPath.path) (just the summary section at the top, not the full transcript).
 
             Check if the summary or action items mention a next meeting, follow-up meeting, or recurring meeting time.
 
-            If a specific date/time is mentioned or clearly inferable, create a calendar event by running:
-            open "x-fantastical3://parse?sentence=<natural language event description>&add=1\(calParam)"
+            If a specific date/time is mentioned or clearly inferable:
+            1. Create a calendar event by running:
+               open "x-fantastical3://parse?sentence=<natural language event description>&add=1\(calParam)"
+               URL-encode the sentence parameter. Include the meeting title, date, start time, and duration.
+            2. Create a prep directory for that next meeting:
+               mkdir -p "\(projectDirPath)/YYYY-MM-DD_prep"
+               Use the date of the next meeting (not today's date).
 
-            URL-encode the sentence parameter. Include the meeting title, date, start time, and duration.
             If no next meeting is mentioned, do nothing — just say "no next meeting found".
             """
 
             runAgent(
                 claudePath: claudePath,
                 prompt: calendarPrompt,
-                allowedTools: "Read,Bash(open *)",
+                allowedTools: "Read,Bash(open *),Bash(mkdir *)",
                 maxTurns: 5,
                 env: env,
                 skillContent: nil

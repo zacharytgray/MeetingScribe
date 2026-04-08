@@ -90,6 +90,30 @@ class ProjectManager: ObservableObject {
         saveMeta()
     }
 
+    func addRepo(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !projectMeta.repos.contains(trimmed) else { return }
+        projectMeta.repos.append(trimmed)
+        saveMeta()
+    }
+
+    func removeRepo(_ path: String) {
+        projectMeta.repos.removeAll { $0 == path }
+        saveMeta()
+    }
+
+    func addResource(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !projectMeta.resources.contains(trimmed) else { return }
+        projectMeta.resources.append(trimmed)
+        saveMeta()
+    }
+
+    func removeResource(_ path: String) {
+        projectMeta.resources.removeAll { $0 == path }
+        saveMeta()
+    }
+
     private func loadMeta() {
         guard let url = selectedProjectURL else {
             projectMeta = ProjectMeta()

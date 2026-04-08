@@ -3,6 +3,8 @@ import Foundation
 // per-project metadata stored in <project>/project.json
 struct ProjectMeta: Codable {
     var participants: [String] = []
+    var repos: [String] = []      // paths to related source repos
+    var resources: [String] = []  // paths to research materials, e.g. Google Drive folders
 
     // MARK: - persistence
 
