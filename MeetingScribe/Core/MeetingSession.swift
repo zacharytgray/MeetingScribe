@@ -13,6 +13,7 @@ class MeetingSession: ObservableObject {
 
     private var config: AppConfig
     private var projectURL: URL?
+    private var projectMeta: ProjectMeta = ProjectMeta()
     private var sessionRecordingsDir: URL?
     private var recorder: AudioRecorder?
     private var micRecorder: MicRecorder?
@@ -47,10 +48,11 @@ class MeetingSession: ObservableObject {
 
     // MARK: - recording
 
-    func startRecording(projectURL: URL) throws {
+    func startRecording(projectURL: URL, projectMeta: ProjectMeta = ProjectMeta()) throws {
         guard !state.isBusy else { return }
 
         self.projectURL = projectURL
+        self.projectMeta = projectMeta
         self.segments = []
         self.pendingChunks = []
         self.transcribedCount = 0
@@ -300,7 +302,7 @@ class MeetingSession: ObservableObject {
 
         let processor = ClaudeProcessor(config: config)
         self.claudeProcessor = processor
-        processor.process(transcriptPath: transcriptURL, planPath: planURL) { [weak self] status in
+        processor.process(transcriptPath: transcriptURL, planPath: planURL, projectMeta: projectMeta) { [weak self] status in
             guard let self else { return }
             self.claudeProcessor = nil
             self.claudeStatus = status

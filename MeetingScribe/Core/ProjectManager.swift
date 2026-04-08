@@ -3,6 +3,7 @@ import Foundation
 class ProjectManager: ObservableObject {
     @Published var projects: [String] = []
     @Published var selectedProject: String?
+    @Published var projectMeta: ProjectMeta = ProjectMeta()
 
     private let config: AppConfig
 
@@ -39,6 +40,8 @@ class ProjectManager: ObservableObject {
         if selectedProject == nil || !projects.contains(selectedProject ?? "") {
             selectedProject = projects.first
         }
+
+        loadMeta()
     }
 
     func createProject(name: String) -> Bool {
@@ -48,8 +51,13 @@ class ProjectManager: ObservableObject {
         let url = notesRoot.appendingPathComponent(trimmed)
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            // seed project.json and README
+            ProjectMeta().save(to: url)
+            let readme = "# \(trimmed)\n\n## Project Overview\n\n_To be updated after the first meeting._\n\n## Meeting Log\n"
+            try? readme.write(to: url.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
             refresh()
             selectedProject = trimmed
+            loadMeta()
             return true
         } catch {
             print("[ProjectManager] failed to create \(trimmed): \(error)")
@@ -59,8 +67,34 @@ class ProjectManager: ObservableObject {
 
     func select(_ project: String) {
         selectedProject = project
+        loadMeta()
         var cfg = config
         cfg.lastProject = project
         cfg.save()
+    }
+
+    func saveMeta() {
+        guard let url = selectedProjectURL else { return }
+        projectMeta.save(to: url)
+    }
+
+    func addParticipant(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !projectMeta.participants.contains(trimmed) else { return }
+        projectMeta.participants.append(trimmed)
+        saveMeta()
+    }
+
+    func removeParticipant(_ name: String) {
+        projectMeta.participants.removeAll { $0 == name }
+        saveMeta()
+    }
+
+    private func loadMeta() {
+        guard let url = selectedProjectURL else {
+            projectMeta = ProjectMeta()
+            return
+        }
+        projectMeta = ProjectMeta.load(from: url)
     }
 }
