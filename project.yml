@@ -36,8 +36,8 @@ targets:
       base:
         INFOPLIST_FILE: MeetingScribe/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.zacharytgray.MeetingScribe
-        MARKETING_VERSION: "2.3.1"
-        CURRENT_PROJECT_VERSION: "15"
+        MARKETING_VERSION: "2.3.2"
+        CURRENT_PROJECT_VERSION: "16"
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: $(DEVELOPMENT_TEAM)
