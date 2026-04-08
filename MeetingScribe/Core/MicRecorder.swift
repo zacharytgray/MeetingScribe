@@ -23,18 +23,6 @@ class MicRecorder {
     }
 
     func start() throws {
-        // ensure mic permission before accessing inputNode
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .notDetermined:
-            // synchronously block to request — first launch only
-            let sem = DispatchSemaphore(value: 0)
-            AVCaptureDevice.requestAccess(for: .audio) { _ in sem.signal() }
-            sem.wait()
-        case .denied, .restricted:
-            print("[MicRecorder] microphone permission denied")
-            throw MicRecorderError.formatError
-        default: break
-        }
 
         let engine = AVAudioEngine()
         let input = engine.inputNode

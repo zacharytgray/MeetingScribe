@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AVFoundation
 
 // orchestrates recording, transcription, and claude processing
 @MainActor
@@ -85,19 +86,28 @@ class MeetingSession: ObservableObject {
         try recorder.start()
         self.recorder = recorder
 
-        // start mic capture if enabled
+        // start mic capture if enabled — request permission async so we don't block main thread
         if config.micEnabled {
-            let mic = MicRecorder(chunkSeconds: config.chunkSeconds, outputDir: sessionDir) { [weak self] url, offset in
-                DispatchQueue.main.async {
-                    self?.handleChunk(url: url, offset: offset, source: .mic)
+            let micSessionDir = sessionDir
+            let micChunkSeconds = config.chunkSeconds
+            Task { @MainActor in
+                let granted = await AVCaptureDevice.requestAccess(for: .audio)
+                guard granted else {
+                    print("[MeetingSession] mic permission denied")
+                    return
                 }
-            }
-            do {
-                try mic.start()
-                self.micRecorder = mic
-                print("[MeetingSession] mic recording enabled")
-            } catch {
-                print("[MeetingSession] mic failed to start: \(error)")
+                let mic = MicRecorder(chunkSeconds: micChunkSeconds, outputDir: micSessionDir) { [weak self] url, offset in
+                    DispatchQueue.main.async {
+                        self?.handleChunk(url: url, offset: offset, source: .mic)
+                    }
+                }
+                do {
+                    try mic.start()
+                    self.micRecorder = mic
+                    print("[MeetingSession] mic recording enabled")
+                } catch {
+                    print("[MeetingSession] mic failed to start: \(error)")
+                }
             }
         }
 
