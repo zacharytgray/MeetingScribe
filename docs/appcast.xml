@@ -3,12 +3,27 @@
     <channel>
         <title>MeetingScribe</title>
         <item>
+            <title>2.3.1</title>
+            <pubDate>Wed, 08 Apr 2026 11:15:34 -0500</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe-2.3.1.dmg" length="2755187" type="application/octet-stream" sparkle:edSignature="rk/R8dxMjm4Aw65PCvonC1J+2Y6cIbfTpPTqW71AexdTmFf98uvTm+iPQxg2f0c0JWMf4RKlMSgetA5xv6UCCw=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe15-13.delta" sparkle:deltaFrom="13" length="79994" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="kYzDFvvQT/tjImZLcb2X4SQDBIZLQzZdShfnkF4BojDoYRI6ttFLOfWmr1TUwQublfrq9Fh5qRCFjMX8lT3OAg=="/>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe15-11.delta" sparkle:deltaFrom="11" length="98910" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="jkFqR58IjdG1UDEwSZRK5Z1C33MMEYLJ/bpm8rovAVnJGm2GAKHe9Iu2PO3zlI2Db4ny2SbeApCUGNcsytNxAA=="/>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe15-8.delta" sparkle:deltaFrom="8" length="620422" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="KcNUIOP1LJDQ1xYGAjNin2w3FGNhTDgjNt38+mmHAD2D1iG3Q59ogSI3ZzEnKy8F9Q0e6w9Wts3t0bQjfz7zBw=="/>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe15-4.delta" sparkle:deltaFrom="4" length="689150" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="OkTEnJPUrSMXTfqZQDgRl4OnaLSmkwm2WsvAgkUAZtc5Nvjo4aG82wlNfi4kG740HSQRM/ENrLyEn6S4HVE5DQ=="/>
+                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe15-2.delta" sparkle:deltaFrom="2" length="696750" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="tkTnSzUr5VW+eiLJD+FQuAEcJPJjiB9ss/iIkl9O03aWqlw9WQApjHX+qSileqiQR7R6l3PWoFNWPuSswz61Bw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>2.3.0</title>
             <pubDate>Tue, 07 Apr 2026 22:38:07 -0500</pubDate>
             <sparkle:version>13</sparkle:version>
             <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.0/MeetingScribe-2.3.0.dmg" length="2752418" type="application/octet-stream" sparkle:edSignature="0ijk+aqvix/i2jn8IiAUCWKF7WdSZ+qaj4kDj/VcgWeKlzU0wNwZry6qfbwMTo2D13pJ59TFmXYHBQyAqtcCBg=="/>
+            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe-2.3.0.dmg" length="2752418" type="application/octet-stream" sparkle:edSignature="0ijk+aqvix/i2jn8IiAUCWKF7WdSZ+qaj4kDj/VcgWeKlzU0wNwZry6qfbwMTo2D13pJ59TFmXYHBQyAqtcCBg=="/>
             <sparkle:deltas>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.0/MeetingScribe13-11.delta" sparkle:deltaFrom="11" length="95726" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="rNViqHSVCGvfTJXx0+Dz+PL86/amQS5Az7okztQ6LxQIkiredD5AXwHw00DTf3SYHIbJcQBC6qbKmLzoZvFOBg=="/>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.0/MeetingScribe13-8.delta" sparkle:deltaFrom="8" length="612722" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="yhv7+CntOBEEerS9QvZzqMWkcJOYG+1qRgsRzalDfw7zAdLoeC848CaQsn9k+wXtn/qo6bIn74cJLFsuMeXRAg=="/>
@@ -23,25 +38,12 @@
             <sparkle:version>11</sparkle:version>
             <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.0/MeetingScribe-2.2.0.dmg" length="2750509" type="application/octet-stream" sparkle:edSignature="E5c8iMCl6zorZgTqJybcNj+93l0IALgSjlkXCimKfb0PhaZuPIFmOQopnBo0HEbuuT3I5nDL7l9O9mxAu9k7Bg=="/>
+            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.1/MeetingScribe-2.2.0.dmg" length="2750509" type="application/octet-stream" sparkle:edSignature="E5c8iMCl6zorZgTqJybcNj+93l0IALgSjlkXCimKfb0PhaZuPIFmOQopnBo0HEbuuT3I5nDL7l9O9mxAu9k7Bg=="/>
             <sparkle:deltas>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.2.0/MeetingScribe11-8.delta" sparkle:deltaFrom="8" length="601306" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Auq8TtZ/vaMvV6KkxpT/LjEupHhYdZHLAXT0CUTTEmP/pkgteTTiIfxFPeqcCIWYVZdsvxr349TWblfhpXs9BQ=="/>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.2.0/MeetingScribe11-4.delta" sparkle:deltaFrom="4" length="683154" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="MnYV0EGsMDSHdKVjKDvwZ7bcpuMK1ldOouH7HJXz4c4DYHKayDqXiAkehShzpy6io6dyscKiv3MCEweSuMwPBg=="/>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.2.0/MeetingScribe11-2.delta" sparkle:deltaFrom="2" length="692290" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="AQHBSUng7WAIt4Pg3zLvH+4EgGATkUO3/vAdBhmZ6FK2KB3B0Bn8BQ7m9YKmXofMZMIE/QhFKRA80yCunZz2Dw=="/>
                 <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.2.0/MeetingScribe11-1.delta" sparkle:deltaFrom="1" length="707418" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977616" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="vAKQoa5pKF4YPlvIAG1ESUAf40T9oqAFdG0jHlLO7I4URDXbigs55vwL6uCrRCBcIAaRbxlxvxH0XP/n9XTKDw=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>2.1.0</title>
-            <pubDate>Mon, 06 Apr 2026 14:52:14 -0500</pubDate>
-            <sparkle:version>8</sparkle:version>
-            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.2</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.3.0/MeetingScribe-2.1.0.dmg" length="1937484" type="application/octet-stream" sparkle:edSignature="xivQo1+morTmduQKVwqDZUmTTnBtKyOZLgQHhF9J4cCyZlJuG5vWLw0Zuy7Ob/S9CBssu/KKwsJnWYWYAmCVBA=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.1.0/MeetingScribe8-4.delta" sparkle:deltaFrom="4" length="179634" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="1ebPliuWyr1iZk6v/lLAN1KPKqIkcbe1PQFjw2xypBNs+bIBC4vniC7noNixwGFVfT/O8bmi1B/1PcZY4XifCQ=="/>
-                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.1.0/MeetingScribe8-2.delta" sparkle:deltaFrom="2" length="190370" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="lzLQJgELzUPywvF0pwEM7fuuL/HxfW9SrOM89J5Sq3uGVQ5XCGl7W9ezvz8AsjHmM5DOmPqiHXK1sPRmi+ELCw=="/>
-                <enclosure url="https://github.com/zacharytgray/MeetingScribe/releases/download/v2.1.0/MeetingScribe8-1.delta" sparkle:deltaFrom="1" length="207082" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977616" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="lGLQnHJnRtu1sjIc9vd3I5bxfw68BTrafHr13Xb1hPB/uCizrEy7NVkgAKn4FdIUPQBiwZte+avkMcMm2JNkAw=="/>
             </sparkle:deltas>
         </item>
     </channel>
