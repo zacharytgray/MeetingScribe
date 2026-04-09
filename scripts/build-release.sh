@@ -61,6 +61,14 @@ codesign --force --sign "$SIGN_ID" --timestamp --options runtime \
     --entitlements "$PROJECT_DIR/MeetingScribe/MeetingScribe-Release.entitlements" \
     "$APP_PATH"
 
+# re-sign audiotee so TCC grants survive recompilation
+AUDIOTEE_PATH="$(which audiotee 2>/dev/null || echo /usr/local/bin/audiotee)"
+if [ -f "$AUDIOTEE_PATH" ]; then
+    echo "=== Re-signing audiotee ==="
+    codesign --force --sign "$SIGN_ID" --identifier "com.meetingscribe.audiotee" \
+        --options runtime --timestamp "$AUDIOTEE_PATH"
+fi
+
 echo "=== Creating DMG ==="
 
 rm -f "$DMG_PATH"
