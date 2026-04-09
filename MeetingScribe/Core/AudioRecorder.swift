@@ -398,7 +398,7 @@ class AudioRecorder {
         case failed(String)
     }
 
-    /// quick 3-second capture test — returns whether audiotee is producing real audio
+    /// quick 3-second capture test using a pipe (not FIFO) for reliability
     static func testCapture(completion: @escaping (AudioTestResult) -> Void) {
         guard let binary = audioteePath else {
             completion(.failed("audiotee not found"))
@@ -406,59 +406,42 @@ class AudioRecorder {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let fm = FileManager.default
-            let testDir = NSTemporaryDirectory() + "meetingscribe-audio-test"
-            try? fm.createDirectory(atPath: testDir, withIntermediateDirectories: true)
-
-            let fifo = testDir + "/test.fifo"
-            if fm.fileExists(atPath: fifo) { try? fm.removeItem(atPath: fifo) }
-            guard mkfifo(fifo, 0o600) == 0 else {
-                completion(.failed("could not create test FIFO"))
+            // use a pipe instead of FIFO — simpler, no blocking edge cases
+            var pipeFDs: [Int32] = [0, 0]
+            guard pipe(&pipeFDs) == 0 else {
+                DispatchQueue.main.async { completion(.failed("pipe creation failed")) }
                 return
             }
+            let readEnd = pipeFDs[0]
+            let writeEnd = pipeFDs[1]
 
-            let bootstrapFD = open(fifo, O_RDWR)
-            guard bootstrapFD >= 0 else {
-                completion(.failed("could not open test FIFO"))
+            guard let pid = try? spawnAudiotee(binary: binary, stdoutFD: writeEnd) else {
+                close(readEnd); close(writeEnd)
+                DispatchQueue.main.async { completion(.failed("could not start audiotee")) }
                 return
             }
+            close(writeEnd) // parent only reads
 
-            guard let pid = try? spawnAudiotee(binary: binary, stdoutFD: bootstrapFD) else {
-                close(bootstrapFD)
-                completion(.failed("could not start audiotee"))
-                return
-            }
+            // set non-blocking so we can enforce a deadline
+            fcntl(readEnd, F_SETFL, O_NONBLOCK)
 
-            let rfd = open(fifo, O_RDONLY)
-            close(bootstrapFD)
-
-            guard rfd >= 0 else {
-                kill(pid, SIGTERM)
-                completion(.failed("could not read from audiotee"))
-                return
-            }
-
-            // read ~3 seconds of audio
             let totalBytes = sampleRate * bytesPerSample * 3
             var buf = Data(capacity: totalBytes)
             let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: blockBytes)
             defer { readBuf.deallocate() }
 
-            let deadline = Date().addingTimeInterval(4) // 4s timeout
+            let deadline = Date().addingTimeInterval(4)
             while buf.count < totalBytes && Date() < deadline {
-                let n = read(rfd, readBuf, blockBytes)
+                let n = read(readEnd, readBuf, blockBytes)
                 if n > 0 { buf.append(readBuf, count: n) }
-                else if n == 0 { usleep(10_000) }
-                else { break }
+                else { usleep(50_000) } // 50ms poll
             }
 
-            close(rfd)
+            close(readEnd)
             kill(pid, SIGTERM)
             var status: Int32 = 0
             waitpid(pid, &status, 0)
-            try? fm.removeItem(atPath: testDir)
 
-            // check for non-zero samples
             let peak = buf.withUnsafeBytes { raw -> Int16 in
                 let samples = raw.bindMemory(to: Int16.self)
                 var p: Int16 = 0
@@ -467,7 +450,11 @@ class AudioRecorder {
             }
 
             DispatchQueue.main.async {
-                completion(peak > 0 ? .success : .silence)
+                if buf.isEmpty {
+                    completion(.failed("audiotee produced no data"))
+                } else {
+                    completion(peak > 0 ? .success : .silence)
+                }
             }
         }
     }
