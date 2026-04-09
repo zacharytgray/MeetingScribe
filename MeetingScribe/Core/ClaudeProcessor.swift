@@ -132,7 +132,7 @@ class ClaudeProcessor {
         // todoist agent
         group.enter()
         let todoistPrompt = """
-        Read the action plan at \(planPath.path) and the meeting transcript at \(transcriptPath.path).
+        Read the action plan at \(planPath.path).
 
         Create Todoist tasks for every action item:
         1. Create a parent task named "Meeting: <title> (YYYY-MM-DD)" in Inbox
