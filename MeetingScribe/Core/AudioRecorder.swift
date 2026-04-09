@@ -398,7 +398,7 @@ class AudioRecorder {
         case failed(String)
     }
 
-    /// quick 3-second capture test using a pipe (not FIFO) for reliability
+    /// quick 3-second capture test using a pipe
     static func testCapture(completion: @escaping (AudioTestResult) -> Void) {
         guard let binary = audioteePath else {
             completion(.failed("audiotee not found"))
@@ -406,7 +406,6 @@ class AudioRecorder {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // use a pipe instead of FIFO — simpler, no blocking edge cases
             var pipeFDs: [Int32] = [0, 0]
             guard pipe(&pipeFDs) == 0 else {
                 DispatchQueue.main.async { completion(.failed("pipe creation failed")) }
@@ -415,16 +414,36 @@ class AudioRecorder {
             let readEnd = pipeFDs[0]
             let writeEnd = pipeFDs[1]
 
-            guard let pid = try? spawnAudiotee(binary: binary, stdoutFD: writeEnd) else {
-                close(readEnd); close(writeEnd)
-                DispatchQueue.main.async { completion(.failed("could not start audiotee")) }
+            // spawn with own process group for TCC
+            var attr: posix_spawnattr_t? = nil
+            posix_spawnattr_init(&attr)
+            posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
+            posix_spawnattr_setpgroup(&attr, 0)
+
+            var actions: posix_spawn_file_actions_t? = nil
+            posix_spawn_file_actions_init(&actions)
+            posix_spawn_file_actions_adddup2(&actions, writeEnd, STDOUT_FILENO)
+            // send stderr to /dev/null for the test
+            posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+
+            let args = [binary, "--sample-rate", "16000"]
+            let argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
+            defer { for case let arg? in argv { free(arg) } }
+
+            var pid: pid_t = 0
+            let rc = posix_spawn(&pid, binary, &actions, &attr, argv, environ)
+            posix_spawnattr_destroy(&attr)
+            posix_spawn_file_actions_destroy(&actions)
+            close(writeEnd)
+
+            guard rc == 0 else {
+                close(readEnd)
+                DispatchQueue.main.async { completion(.failed("spawn failed (\(rc))")) }
                 return
             }
-            close(writeEnd) // parent only reads
 
-            // set non-blocking so we can enforce a deadline
+            // non-blocking reads with deadline
             fcntl(readEnd, F_SETFL, O_NONBLOCK)
-
             let totalBytes = sampleRate * bytesPerSample * 3
             var buf = Data(capacity: totalBytes)
             let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: blockBytes)
@@ -434,13 +453,16 @@ class AudioRecorder {
             while buf.count < totalBytes && Date() < deadline {
                 let n = read(readEnd, readBuf, blockBytes)
                 if n > 0 { buf.append(readBuf, count: n) }
-                else { usleep(50_000) } // 50ms poll
+                else { usleep(50_000) }
             }
 
             close(readEnd)
             kill(pid, SIGTERM)
-            var status: Int32 = 0
-            waitpid(pid, &status, 0)
+            usleep(200_000)
+            if waitpid(pid, nil, WNOHANG) == 0 {
+                kill(pid, SIGKILL)
+                waitpid(pid, nil, 0)
+            }
 
             let peak = buf.withUnsafeBytes { raw -> Int16 in
                 let samples = raw.bindMemory(to: Int16.self)
