@@ -36,6 +36,20 @@ class MeetingSession: ObservableObject {
         return dir
     }()
 
+    /// trash recording sessions older than 14 days — called on launch
+    static func cleanOldRecordings() {
+        let fm = FileManager.default
+        let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
+        guard let sessions = try? fm.contentsOfDirectory(at: recordingsBaseDir, includingPropertiesForKeys: [.creationDateKey]) else { return }
+        for session in sessions {
+            guard let values = try? session.resourceValues(forKeys: [.creationDateKey]),
+                  let created = values.creationDate,
+                  created < cutoff else { continue }
+            try? fm.trashItem(at: session, resultingItemURL: nil)
+            print("[MeetingSession] trashed old recording: \(session.lastPathComponent)")
+        }
+    }
+
     init(config: AppConfig) {
         self.config = config
     }

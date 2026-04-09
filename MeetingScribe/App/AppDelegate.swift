@@ -19,6 +19,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !AudioRecorder.isAudioteeInstalled { print("[MeetingScribe] warning: audiotee not found") }
         if !ClaudeProcessor.isClaudeInstalled { print("[MeetingScribe] warning: claude CLI not found") }
         print("[MeetingScribe] projects: \(projectManager.projects)")
+
+        // clean up recordings older than 14 days
+        MeetingSession.cleanOldRecordings()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
