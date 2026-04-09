@@ -9,9 +9,13 @@ class AudioRecorder {
     static let blockBytes: Int = Int(Double(sampleRate) * blockDuration) * bytesPerSample  // 6400
     static let silenceThreshold: Float = 0.001
 
+    // seconds of continuous silence before firing onSilenceWarning
+    static let silenceWarningSeconds: Double = 15
+
     private let chunkSeconds: Int
     private let outputDir: URL
     private let onChunk: (URL, TimeInterval) -> Void  // (wav path, chunk start offset)
+    private let onSilenceWarning: (() -> Void)?
 
     private var childPID: pid_t = -1
     private var readFD: Int32 = -1
@@ -19,6 +23,7 @@ class AudioRecorder {
     private var running = false
     private var elapsedSeconds: TimeInterval = 0
     private let threadDone = DispatchSemaphore(value: 0)
+    private var silenceWarningFired = false
 
     // flush state — written by read thread, read by stop()
     private var flushData: Data?
@@ -29,10 +34,11 @@ class AudioRecorder {
     private static let fifoPath = stateDir + "/audiotee.fifo"
     private static let pidPath = stateDir + "/audiotee.pid"
 
-    init(chunkSeconds: Int = 30, outputDir: URL, onChunk: @escaping (URL, TimeInterval) -> Void) {
+    init(chunkSeconds: Int = 30, outputDir: URL, onChunk: @escaping (URL, TimeInterval) -> Void, onSilenceWarning: (() -> Void)? = nil) {
         self.chunkSeconds = chunkSeconds
         self.outputDir = outputDir
         self.onChunk = onChunk
+        self.onSilenceWarning = onSilenceWarning
     }
 
     // MARK: - public
@@ -294,6 +300,15 @@ class AudioRecorder {
 
             if silentBlocks > 0 && silentBlocks % Int(30.0 / Self.blockDuration) == 0 {
                 print("[AudioRecorder] \(Int(Double(silentBlocks) * Self.blockDuration))s of continuous silence")
+            }
+
+            // warn early if audiotee is producing only silence (stale TCC grant)
+            let silenceSeconds = Double(silentBlocks) * Self.blockDuration
+            if !silenceWarningFired && silenceSeconds >= Self.silenceWarningSeconds {
+                silenceWarningFired = true
+                if let cb = onSilenceWarning {
+                    DispatchQueue.main.async { cb() }
+                }
             }
 
             chunkBuffer.append(data)

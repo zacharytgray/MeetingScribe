@@ -194,6 +194,15 @@ struct MenuBarView: View {
                     Spacer()
                 }
 
+                if session.silenceWarning {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("No audio detected — check audiotee permissions")
+                            .font(.caption)
+                    }
+                }
+
                 if !session.transcriptionProgress.isEmpty {
                     Text("Transcribing: \(session.transcriptionProgress)")
                         .font(.caption)

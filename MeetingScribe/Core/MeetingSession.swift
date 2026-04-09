@@ -10,6 +10,7 @@ class MeetingSession: ObservableObject {
     @Published var duration: TimeInterval = 0
     @Published var transcriptionProgress: String = ""  // "3/5 chunks"
     @Published var claudeStatus: ClaudeProcessor.Status = .idle
+    @Published var silenceWarning = false
 
     private var config: AppConfig
     private var projectURL: URL?
@@ -73,6 +74,7 @@ class MeetingSession: ObservableObject {
         self.isTranscribing = false
         self.transcriptionProgress = ""
         self.claudeStatus = .idle
+        self.silenceWarning = false
 
         // create session recordings directory for raw audio preservation
         let dateStr: String = {
@@ -94,11 +96,14 @@ class MeetingSession: ObservableObject {
         }
 
         // start system audio capture
-        let recorder = AudioRecorder(chunkSeconds: config.chunkSeconds, outputDir: sessionDir) { [weak self] url, offset in
+        let recorder = AudioRecorder(chunkSeconds: config.chunkSeconds, outputDir: sessionDir, onChunk: { [weak self] url, offset in
             DispatchQueue.main.async {
                 self?.handleChunk(url: url, offset: offset, source: .loopback)
             }
-        }
+        }, onSilenceWarning: { [weak self] in
+            self?.silenceWarning = true
+            print("[MeetingSession] WARNING: audiotee producing silence — possible TCC permission issue")
+        })
         try recorder.start()
         self.recorder = recorder
 
