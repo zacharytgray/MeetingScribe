@@ -389,6 +389,88 @@ class AudioRecorder {
             return nil
         }
     }
+
+    // MARK: - audio test
+
+    enum AudioTestResult {
+        case success
+        case silence  // tap works but returns zeros (stale TCC)
+        case failed(String)
+    }
+
+    /// quick 3-second capture test — returns whether audiotee is producing real audio
+    static func testCapture(completion: @escaping (AudioTestResult) -> Void) {
+        guard let binary = audioteePath else {
+            completion(.failed("audiotee not found"))
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fm = FileManager.default
+            let testDir = NSTemporaryDirectory() + "meetingscribe-audio-test"
+            try? fm.createDirectory(atPath: testDir, withIntermediateDirectories: true)
+
+            let fifo = testDir + "/test.fifo"
+            if fm.fileExists(atPath: fifo) { try? fm.removeItem(atPath: fifo) }
+            guard mkfifo(fifo, 0o600) == 0 else {
+                completion(.failed("could not create test FIFO"))
+                return
+            }
+
+            let bootstrapFD = open(fifo, O_RDWR)
+            guard bootstrapFD >= 0 else {
+                completion(.failed("could not open test FIFO"))
+                return
+            }
+
+            guard let pid = try? spawnAudiotee(binary: binary, stdoutFD: bootstrapFD) else {
+                close(bootstrapFD)
+                completion(.failed("could not start audiotee"))
+                return
+            }
+
+            let rfd = open(fifo, O_RDONLY)
+            close(bootstrapFD)
+
+            guard rfd >= 0 else {
+                kill(pid, SIGTERM)
+                completion(.failed("could not read from audiotee"))
+                return
+            }
+
+            // read ~3 seconds of audio
+            let totalBytes = sampleRate * bytesPerSample * 3
+            var buf = Data(capacity: totalBytes)
+            let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: blockBytes)
+            defer { readBuf.deallocate() }
+
+            let deadline = Date().addingTimeInterval(4) // 4s timeout
+            while buf.count < totalBytes && Date() < deadline {
+                let n = read(rfd, readBuf, blockBytes)
+                if n > 0 { buf.append(readBuf, count: n) }
+                else if n == 0 { usleep(10_000) }
+                else { break }
+            }
+
+            close(rfd)
+            kill(pid, SIGTERM)
+            var status: Int32 = 0
+            waitpid(pid, &status, 0)
+            try? fm.removeItem(atPath: testDir)
+
+            // check for non-zero samples
+            let peak = buf.withUnsafeBytes { raw -> Int16 in
+                let samples = raw.bindMemory(to: Int16.self)
+                var p: Int16 = 0
+                for s in samples { let a = abs(s); if a > p { p = a } }
+                return p
+            }
+
+            DispatchQueue.main.async {
+                completion(peak > 0 ? .success : .silence)
+            }
+        }
+    }
 }
 
 enum AudioRecorderError: LocalizedError {

@@ -16,6 +16,15 @@ struct MenuBarView: View {
     @State private var showingRepos = false
     @State private var newResource = ""
     @State private var showingResources = false
+    @State private var audioTestState: AudioTestState = .idle
+
+    enum AudioTestState: Equatable {
+        case idle
+        case testing
+        case speakerOK, speakerFail(String)
+        case micOK, micFail(String)
+        case allOK, partial(String)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -265,6 +274,46 @@ struct MenuBarView: View {
                         .foregroundStyle(.orange)
                         .font(.caption)
                 }
+
+                // audio test
+                switch audioTestState {
+                case .idle:
+                    Button(action: { runAudioTest() }) {
+                        Label("Test Audio", systemImage: "speaker.wave.2")
+                    }
+                    .font(.caption)
+                case .testing:
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.mini)
+                        Text("Testing audio…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                case .allOK:
+                    Label("Speaker & mic OK", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                case .speakerOK:
+                    Label("Speaker OK, testing mic…", systemImage: "checkmark.circle")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                case .speakerFail(let msg):
+                    Label("Speaker: \(msg)", systemImage: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                case .micOK:
+                    Label("Mic OK", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                case .micFail(let msg):
+                    Label("Mic: \(msg)", systemImage: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                case .partial(let msg):
+                    Label(msg, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                }
             }
 
             Divider()
@@ -326,6 +375,47 @@ struct MenuBarView: View {
         guard !path.isEmpty else { return }
         projectManager.addResource(path)
         newResource = ""
+    }
+
+    private func runAudioTest() {
+        audioTestState = .testing
+        // test speaker (audiotee system audio capture)
+        AudioRecorder.testCapture { speakerResult in
+            switch speakerResult {
+            case .success:
+                audioTestState = .speakerOK
+            case .silence:
+                audioTestState = .speakerFail("no audio — check audiotee permissions")
+            case .failed(let msg):
+                audioTestState = .speakerFail(msg)
+            }
+
+            // test mic
+            MicRecorder.testCapture { micResult in
+                let speakerOK: Bool = { if case .success = speakerResult { return true }; return false }()
+                let micOK: Bool = { if case .success = micResult { return true }; return false }()
+
+                if speakerOK && micOK {
+                    audioTestState = .allOK
+                } else if speakerOK && !micOK {
+                    let micMsg = { switch micResult {
+                    case .silence: return "mic silent"
+                    case .failed(let m): return m
+                    default: return "mic issue"
+                    }}()
+                    audioTestState = .partial("Speaker OK, \(micMsg)")
+                } else if !speakerOK && micOK {
+                    audioTestState = .partial("Mic OK, speaker failed")
+                } else {
+                    audioTestState = .speakerFail("no audio from speaker or mic")
+                }
+
+                // auto-reset after 8 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                    audioTestState = .idle
+                }
+            }
+        }
     }
 }
 

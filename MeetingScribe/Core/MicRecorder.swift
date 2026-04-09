@@ -173,6 +173,74 @@ class MicRecorder {
             return nil
         }
     }
+
+    // MARK: - mic test
+
+    /// quick 2-second mic capture test
+    static func testCapture(completion: @escaping (AudioRecorder.AudioTestResult) -> Void) {
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            guard granted else {
+                DispatchQueue.main.async { completion(.failed("mic permission denied")) }
+                return
+            }
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let engine = AVAudioEngine()
+                let input = engine.inputNode
+                let nativeFormat = input.outputFormat(forBus: 0)
+
+                guard let targetFormat = AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false
+                ), let converter = AVAudioConverter(from: nativeFormat, to: targetFormat) else {
+                    DispatchQueue.main.async { completion(.failed("mic format error")) }
+                    return
+                }
+
+                var collected = Data()
+                let lock = NSLock()
+                let targetBytes = Int(sampleRate) * bytesPerSample * 2 // 2 seconds
+
+                input.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { buffer, _ in
+                    let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: AVAudioFrameCount(targetFormat.sampleRate * 0.5))!
+                    var error: NSError?
+                    converter.convert(to: outBuffer, error: &error) { _, status in
+                        status.pointee = .haveData
+                        return buffer
+                    }
+                    let pcm = float32ToInt16(outBuffer)
+                    lock.lock()
+                    collected.append(pcm)
+                    lock.unlock()
+                }
+
+                do { try engine.start() } catch {
+                    DispatchQueue.main.async { completion(.failed("mic engine failed: \(error.localizedDescription)")) }
+                    return
+                }
+
+                // collect for 2 seconds
+                Thread.sleep(forTimeInterval: 2.0)
+
+                input.removeTap(onBus: 0)
+                engine.stop()
+
+                lock.lock()
+                let data = collected
+                lock.unlock()
+
+                let peak: Int16 = data.withUnsafeBytes { raw in
+                    let samples = raw.bindMemory(to: Int16.self)
+                    var p: Int16 = 0
+                    for s in samples { let a = abs(s); if a > p { p = a } }
+                    return p
+                }
+
+                DispatchQueue.main.async {
+                    completion(peak > 100 ? .success : .silence)
+                }
+            }
+        }
+    }
 }
 
 enum MicRecorderError: LocalizedError {
