@@ -1,6 +1,6 @@
 cask "meetingscribe" do
-  version "2.4.2"
-  sha256 "89abb372a0b9ca9fe81e34367af40b1e4cc57e2772b5fffa555f2d69eb203b22"
+  version "2.4.3"
+  sha256 "ed49c797240305048d39b1720de8d476b752e21018c18a40dafc32f9c3525842"
 
   url "https://github.com/zacharytgray/MeetingScribe/releases/download/v#{version}/MeetingScribe-#{version}.dmg"
   name "MeetingScribe"
