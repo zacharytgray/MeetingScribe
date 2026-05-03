@@ -149,7 +149,8 @@ class ClaudeProcessor {
             allowedTools: "Read,mcp__todoist__*",
             maxTurns: 20,
             env: env,
-            skillContent: nil
+            skillContent: nil,
+            mcpConfig: todoistMCPConfig()
         ) { result in
             switch result {
             case .success(let resp):
@@ -224,6 +225,27 @@ class ClaudeProcessor {
 
     // MARK: - agent runner
 
+    // build MCP config JSON with only the todoist server
+    private func todoistMCPConfig() -> String? {
+        guard let key = config.resolvedTodoistApiKey else { return nil }
+        let cfg: [String: Any] = [
+            "mcpServers": [
+                "todoist": [
+                    "type": "stdio",
+                    "command": "/usr/local/bin/npx",
+                    "args": ["-y", "@greirson/mcp-todoist"],
+                    "env": [
+                        "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+                        "TODOIST_API_TOKEN": key
+                    ]
+                ]
+            ]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: cfg),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        return json
+    }
+
     private func runAgent(
         claudePath: String,
         prompt: String,
@@ -231,6 +253,7 @@ class ClaudeProcessor {
         maxTurns: Int,
         env: [String: String],
         skillContent: String?,
+        mcpConfig: String? = nil, // nil = no MCPs; JSON string = load only these
         completion: @escaping (Result<Response?, AgentError>) -> Void
     ) {
         var args = [
@@ -238,7 +261,10 @@ class ClaudeProcessor {
             "--allowedTools", allowedTools,
             "--permission-mode", "acceptEdits",
             "--output-format", "json",
-            "--max-turns", String(maxTurns)
+            "--max-turns", String(maxTurns),
+            // isolate from global MCP servers (qmd SSH, etc.) that can hang/timeout
+            "--strict-mcp-config",
+            "--mcp-config", mcpConfig ?? "{}"
         ]
 
         if let model = config.claudeModel, !model.isEmpty {
